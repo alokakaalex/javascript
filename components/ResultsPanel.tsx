@@ -14,6 +14,7 @@ const CATEGORY_ORDER: AssetCategory[] = [
   "Wiring & Conduit",
   "Switches, Sockets & Distribution",
   "Site Conditions & Miscellaneous",
+  "Labour & Installation",
 ];
 
 const currency = new Intl.NumberFormat("en-IN", {
@@ -111,11 +112,12 @@ export default function ResultsPanel({ lines, prices, onPriceChange }: Props) {
         </span>
       </div>
       <p className="text-xs text-zinc-500">
-        Counts and prices are calibrated from two real warehouse fit-outs
-        (Ashok Vihar, 7,000 sq ft and Naraina, 5,400 sq ft). Items marked with
-        an amber note had inconsistent counts between those two sites &mdash;
-        double-check those manually. Edit ratios on the Formulas tab as you
-        add more real project data.
+        Counts and prices are calibrated from three real warehouse fit-outs
+        (Ashok Vihar &amp; Naraina using an LED-bulb lighting scheme,
+        Jahangirpuri using LED tube lights). Items marked with an amber note
+        had inconsistent counts between sites, weren&apos;t itemized by every
+        vendor, or are single-site data &mdash; double-check those manually.
+        Edit ratios on the Formulas tab as you add more real project data.
       </p>
     </div>
   );

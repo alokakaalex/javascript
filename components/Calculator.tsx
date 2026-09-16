@@ -69,9 +69,9 @@ export default function Calculator() {
         </h1>
         <p className="mt-1 text-sm text-zinc-500">
           Enter the warehouse area to get an asset count and cost estimate,
-          calibrated from two real fit-outs (Ashok Vihar &amp; Naraina). Add
-          more of your own project data on the Formulas tab to sharpen it
-          further.
+          calibrated from three real fit-outs (Ashok Vihar, Naraina &amp;
+          Jahangirpuri). Add more of your own project data on the Formulas
+          tab to sharpen it further.
         </p>
       </header>
 

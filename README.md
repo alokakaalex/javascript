@@ -2,7 +2,8 @@
 
 A calculator that estimates the count and cost of electrical assets needed
 to fit out a new warehouse: lighting, fans, wiring/conduit, switches/sockets,
-and distribution hardware (MCBs, junction boxes, etc).
+distribution hardware (MCBs, junction boxes, etc), site conditions, and
+installation labour.
 
 ## How it works
 
@@ -18,39 +19,65 @@ Inputs, formula ratios, and unit costs are saved to the browser's
 
 ## Calibration data
 
-The default ratios and prices are calibrated from two real warehouse
-electrical fit-outs (vendor: Bakshi Enterprises):
+The default ratios and prices are calibrated from three real warehouse
+electrical fit-outs:
 
-| Site | Area | Actual total |
-|---|---|---|
-| Ashok Vihar | 7,000 sq ft | Rs 264,985 |
-| Naraina | 5,400 sq ft | Rs 159,255 |
+| Site | Area | Vendor | Actual total |
+|---|---|---|---|
+| Ashok Vihar | 7,000 sq ft | Bakshi Enterprises | Rs 264,985 |
+| Naraina | 5,400 sq ft | Bakshi Enterprises | Rs 159,255 |
+| Jahangirpuri | 5,400 sq ft | Bakshi Associate | Rs 199,500 (incl. Rs 30,310 labour) |
 
-Each item's `qty per 1000 sq ft` is the average of the two sites'
-(quantity ÷ area-in-thousands). A few items (MCBs, gangbox) used the exact
-same count on both sites regardless of area, so they're modeled as fixed
-quantities instead. Miscellaneous small hardware (screws, cable ties,
-fasteners, PVC clips) and one-off site costs (scaffolding/ladder rental,
-welding) are rolled into a single "Site conditions & hardware allowance"
-priced per sq ft, since they don't map to a discrete count.
+For each item, `qty per 1000 sq ft` is the average of (quantity ÷
+area-in-thousands) across whichever sites itemized that item — a site that
+didn't list a comparable line is excluded from that item's ratio rather than
+treated as needing zero (silence isn't evidence of zero; it usually means
+that vendor bundled it into a different line). A few items (MCBs, gangbox)
+used the exact same count at every site that itemized them regardless of
+area, so they're modeled as fixed quantities instead.
 
-With only two data points, the aggregate estimate lands within ~5% of the
-combined actual cost, but any *single* site's estimate can be off by
-15–20% because the two sites weren't uniformly scaled versions of each
-other (see caveats below).
+Naraina and Jahangirpuri are both 5,400 sq ft but from different vendors,
+which is a useful cross-check: their **materials-only** totals were Rs
+159,255 vs Rs 169,190 — about 6% apart, which is reassuring for the overall
+$/sqft level even though the two vendors itemized things quite differently.
+
+### Two lighting schemes, not additive
+
+Ashok Vihar and Naraina used point LED bulbs; Jahangirpuri used LED tube
+lights instead. These are alternative designs, not things you'd install
+both of, so the tube-light item (`led-tube-light-22w`) defaults to **Rs 0**
+unit cost to avoid double-counting. If your design uses tube lights, set its
+unit cost (Rs 235 at Jahangirpuri) and zero out the LED-bulb/shade/holder
+lines instead.
+
+### Labour is single-site data
+
+Only Jahangirpuri's quote separately itemized installation labour (Rs
+30,310, ~15% of that project's total). Ashok Vihar and Naraina's quotes had
+no labour line at all — meaning it was either self-installed, billed
+separately outside these figures, or bundled into their (comparatively
+lower) material prices. The labour allowance defaults to a non-zero per-sqft
+rate since most new projects do need to budget for it, but treat this as a
+single data point and set it to 0 if your vendor's material pricing already
+includes installation.
 
 ### Known low-confidence items
 
-Two items disagreed sharply between the two sites and should not be
-trusted as-is — the app flags these in amber and recommends setting them
-manually from your own circuit/point plan:
+Two items disagreed sharply between sites and should not be trusted as-is
+— the app flags these in amber and recommends setting them manually from
+your own circuit/point plan:
 
-- **Switch, 10A 1-way**: 1 unit at Ashok Vihar vs 87 at Naraina.
-- **Socket, 6A universal**: 2 units at Ashok Vihar vs 37 at Naraina.
+- **Switch, 10A 1-way**: 1 unit at Ashok Vihar vs 87 at Naraina; not
+  itemized at all at Jahangirpuri.
+- **Socket, 6A universal**: 2 units at Ashok Vihar, 37 at Naraina, 25 at
+  Jahangirpuri — and Jahangirpuri's "sockets" were priced at ~Rs 510 each
+  (a heavier-duty spec), not blended into the Rs 80 default.
 
-Several other items (wall/exhaust fan mix, switch 16A count, the PVC
-conduit blend) also have moderate variance and are flagged with a shorter
-note explaining why.
+The PVC conduit line also carries a caveat: Jahangirpuri priced the same
+item name at ~30x the other two sites' price, almost certainly because it
+was quoted as a bulk coil rather than a single length — that site's price
+is excluded from the blended default, but confirm the purchase unit with
+your own vendor.
 
 ## Getting more accurate results
 
@@ -63,13 +90,15 @@ Add data from more of your own warehouse fit-outs to tighten the model:
    how many sites went into each, or replace it if you trust the new data
    more).
 3. Update unit costs on the Calculator tab from your vendor's actual quote.
+4. If a site didn't itemize a given line, don't average it in as zero —
+   leave the existing ratio alone (see "Calibration data" above for why).
 
 ## Development
 
 ```bash
 npm run dev      # start the dev server at http://localhost:3000
 npm test         # run the calculation engine unit tests (includes a
-                 # regression check against the two calibration sites)
+                 # regression check against all three calibration sites)
 npm run lint     # lint
 npm run build    # production build
 ```

@@ -16,6 +16,7 @@ const CATEGORY_ORDER: AssetCategory[] = [
   "Wiring & Conduit",
   "Switches, Sockets & Distribution",
   "Site Conditions & Miscellaneous",
+  "Labour & Installation",
 ];
 
 export default function FormulaSettings({ rules, onChange, onReset }: Props) {
@@ -28,10 +29,10 @@ export default function FormulaSettings({ rules, onChange, onReset }: Props) {
     <div className="flex flex-col gap-8">
       <div className="flex items-start justify-between gap-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
         <p>
-          These ratios are calibrated from two real warehouse fit-outs (7,000
-          sq ft and 5,400 sq ft). Add data from more of your own sites and
-          adjust these to tighten the model, especially for items flagged
-          below as low-confidence.
+          These ratios are calibrated from three real warehouse fit-outs
+          (7,000 sq ft and two at 5,400 sq ft). Add data from more of your own
+          sites and adjust these to tighten the model, especially for items
+          flagged below as low-confidence.
         </p>
         <button
           onClick={onReset}

@@ -8,7 +8,8 @@ export type AssetCategory =
   | "Fans"
   | "Wiring & Conduit"
   | "Switches, Sockets & Distribution"
-  | "Site Conditions & Miscellaneous";
+  | "Site Conditions & Miscellaneous"
+  | "Labour & Installation";
 
 export interface CatalogItem {
   id: string;

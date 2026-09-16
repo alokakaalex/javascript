@@ -50,16 +50,16 @@ unit cost to avoid double-counting. If your design uses tube lights, set its
 unit cost (Rs 235 at Jahangirpuri) and zero out the LED-bulb/shade/holder
 lines instead.
 
-### Labour is single-site data
+### Labour is single-site data, but confirmed to be a real separate cost
 
-Only Jahangirpuri's quote separately itemized installation labour (Rs
-30,310, ~15% of that project's total). Ashok Vihar and Naraina's quotes had
-no labour line at all — meaning it was either self-installed, billed
-separately outside these figures, or bundled into their (comparatively
-lower) material prices. The labour allowance defaults to a non-zero per-sqft
-rate since most new projects do need to budget for it, but treat this as a
-single data point and set it to 0 if your vendor's material pricing already
-includes installation.
+Labour is billed separately from materials at all three sites — Ashok Vihar
+and Naraina's quotes were materials-only by design, not because installation
+was free. Only Jahangirpuri's quote happened to itemize its labour cost (Rs
+30,310, ~15% of that project's total), so the per-sqft labour rate is based
+on that single data point and should be treated as a rough placeholder. Keep
+this line in your estimate for the full cost of the rollout; set it to 0
+only if you're tracking material and labour costs separately and don't want
+this total to include labour.
 
 ### Known low-confidence items
 

@@ -230,7 +230,7 @@ export const CATALOG: CatalogItem[] = [
     unit: "sq ft",
     isAreaAllowance: true,
     defaultUnitCost: 5.61,
-    note: "⚠️ Based on a single sample site (Jahangirpuri, Rs 30,310 for 5,400 sqft — about 15% of that project's total). The other two sites' quotes had no separate labour line at all, meaning it was either self-installed, billed separately outside these figures, or bundled into their (lower) material prices. Set this to 0 if your vendor's material pricing already includes installation, or if you're arranging labour separately.",
+    note: "⚠️ Confirmed: labour is billed separately from materials at all three sites — Ashok Vihar and Naraina's quotes were materials-only by design, not because installation was free. This ratio is still based on a single data point (Jahangirpuri, Rs 30,310 for 5,400 sqft, ~15% of that project's total), so treat it as a rough placeholder. Keep this line if you're estimating the full cost of the rollout; set it to 0 only if you're tracking material and labour costs in separate tools/quotes and don't want this total to include labour.",
   },
 ];
 

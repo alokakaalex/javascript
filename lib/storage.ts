@@ -2,9 +2,9 @@ import { DEFAULT_INPUTS, DEFAULT_PRICE_LIST, DEFAULT_RULES } from "./config";
 import { PriceList, RuleConfig, WarehouseInputs } from "./types";
 
 const KEYS = {
-  inputs: "wem.inputs",
-  rules: "wem.rules",
-  prices: "wem.prices",
+  inputs: "wem.inputs.v2",
+  rules: "wem.rules.v2",
+  prices: "wem.prices.v2",
 } as const;
 
 function load<T>(key: string, fallback: T): T {

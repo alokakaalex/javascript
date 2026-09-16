@@ -68,8 +68,10 @@ export default function Calculator() {
           Warehouse Electrical Asset Model
         </h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Enter warehouse parameters to get an asset count and cost estimate.
-          Calibrate the formulas and prices from your own data for accuracy.
+          Enter the warehouse area to get an asset count and cost estimate,
+          calibrated from two real fit-outs (Ashok Vihar &amp; Naraina). Add
+          more of your own project data on the Formulas tab to sharpen it
+          further.
         </p>
       </header>
 

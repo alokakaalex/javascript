@@ -9,15 +9,16 @@ interface Props {
 }
 
 const CATEGORY_ORDER: AssetCategory[] = [
-  "Power Distribution",
   "Lighting",
-  "Backup Power",
-  "Motor, Equipment & Safety",
+  "Fans",
+  "Wiring & Conduit",
+  "Switches, Sockets & Distribution",
+  "Site Conditions & Miscellaneous",
 ];
 
-const currency = new Intl.NumberFormat(undefined, {
+const currency = new Intl.NumberFormat("en-IN", {
   style: "currency",
-  currency: "USD",
+  currency: "INR",
   maximumFractionDigits: 0,
 });
 
@@ -53,7 +54,7 @@ export default function ResultsPanel({ lines, prices, onPriceChange }: Props) {
                     <th className="px-3 py-2">Asset</th>
                     <th className="px-3 py-2">Qty</th>
                     <th className="px-3 py-2">Unit</th>
-                    <th className="px-3 py-2">Unit cost</th>
+                    <th className="px-3 py-2">Unit cost (Rs)</th>
                     <th className="px-3 py-2">Total</th>
                     <th className="px-3 py-2">How it&apos;s derived</th>
                   </tr>
@@ -68,6 +69,11 @@ export default function ResultsPanel({ lines, prices, onPriceChange }: Props) {
                       >
                         <td className="px-3 py-2 font-medium text-zinc-800 dark:text-zinc-200">
                           {line.name}
+                          {line.note ? (
+                            <div className="mt-0.5 max-w-xs text-xs font-normal text-amber-700 dark:text-amber-400">
+                              {line.note}
+                            </div>
+                          ) : null}
                         </td>
                         <td className="px-3 py-2 tabular-nums">{line.quantity}</td>
                         <td className="px-3 py-2 text-zinc-500">{line.unit}</td>
@@ -105,9 +111,11 @@ export default function ResultsPanel({ lines, prices, onPriceChange }: Props) {
         </span>
       </div>
       <p className="text-xs text-zinc-500">
-        Any asset with a $0 unit cost has not been priced yet &mdash; fill it in
-        above. Counts come from the formulas on the Formulas tab; edit those
-        constants once you have real data from a comparable warehouse.
+        Counts and prices are calibrated from two real warehouse fit-outs
+        (Ashok Vihar, 7,000 sq ft and Naraina, 5,400 sq ft). Items marked with
+        an amber note had inconsistent counts between those two sites &mdash;
+        double-check those manually. Edit ratios on the Formulas tab as you
+        add more real project data.
       </p>
     </div>
   );

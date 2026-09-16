@@ -1,21 +1,34 @@
 export interface WarehouseInputs {
+  warehouseName: string;
   totalAreaSqFt: number;
-  officeAreaSqFt: number;
-  clearHeightFt: number;
-  numDockDoors: number;
-  numPersonnelDoors: number;
-  numEmployees: number;
-  hasHTSupply: boolean;
-  connectedLoadKW: number | null; // null => estimate from area using load density
-  criticalLoadKW: number | null; // null => estimate as a share of connected load
-  backupCoveragePercent: number; // % of connected load the DG should cover
 }
 
 export type AssetCategory =
-  | "Power Distribution"
   | "Lighting"
-  | "Backup Power"
-  | "Motor, Equipment & Safety";
+  | "Fans"
+  | "Wiring & Conduit"
+  | "Switches, Sockets & Distribution"
+  | "Site Conditions & Miscellaneous";
+
+export interface CatalogItem {
+  id: string;
+  category: AssetCategory;
+  name: string;
+  unit: string;
+  /** Quantity per 1000 sq ft of warehouse area, calibrated from real sites. */
+  qtyPer1000SqFt?: number;
+  /** Used instead of qtyPer1000SqFt for items that didn't scale with area
+   * in the calibration data (e.g. a warehouse only ever needs ~2 main MCBs
+   * regardless of size). */
+  fixedQty?: number;
+  /** True for the single "site conditions" allowance line, whose quantity
+   * is the raw area (sq ft) rather than a per-1000-sqft count. */
+  isAreaAllowance?: boolean;
+  defaultUnitCost: number;
+  /** Shown in the UI when the two calibration sites disagreed sharply on
+   * this item, so the count shouldn't be trusted at face value. */
+  note?: string;
+}
 
 export interface AssetLine {
   id: string;
@@ -23,7 +36,8 @@ export interface AssetLine {
   name: string;
   unit: string;
   quantity: number;
-  formula: string; // human-readable explanation of how quantity was derived
+  formula: string;
+  note?: string;
 }
 
 export interface AssetResult extends AssetLine {
@@ -31,49 +45,6 @@ export interface AssetResult extends AssetLine {
   totalCost: number;
 }
 
-export interface RuleConfig {
-  lighting: {
-    highBayCoveragePerFixtureSqFt: number;
-    officeCoveragePerFixtureSqFt: number;
-    yardLightsPerDockDoor: number;
-    emergencyLightsPerExit: number;
-    switchesPerFixtures: number; // 1 switch per N fixtures
-  };
-  fans: {
-    exhaustFanCoveragePerUnitSqFt: number;
-    wallFanPerEmployees: number;
-  };
-  sockets: {
-    officeSocketsPer100SqFt: number;
-    socketsPerDockDoor: number;
-  };
-  distribution: {
-    sqFtPerDB: number;
-    mccbPerDB: number;
-    mainIncomerMCCBs: number;
-    circuitPointsPerMCB: number;
-    cableTrayMetersPer1000SqFt: number;
-  };
-  transformer: {
-    sizingMarginPercent: number;
-  };
-  backup: {
-    warehouseLoadDensityWPerSqFt: number;
-    officeLoadDensityWPerSqFt: number;
-    dgSizingMarginPercent: number;
-    powerFactor: number;
-    upsAutonomyMinutes: number;
-    batteryUnitKWh: number;
-    criticalLoadSharePercent: number; // used when criticalLoadKW is not provided
-  };
-  earthing: {
-    pitsPerDB: number;
-    pitsPerTransformerOrDG: number;
-  };
-  fireSafety: {
-    smokeDetectorCoverageSqFt: number;
-    zonePanelCoverageSqFt: number;
-  };
-}
-
+export type RuleEntry = { fixedQty?: number; qtyPer1000SqFt?: number };
+export type RuleConfig = Record<string, RuleEntry>;
 export type PriceList = Record<string, number>;

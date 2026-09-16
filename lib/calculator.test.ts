@@ -1,104 +1,89 @@
 import { describe, expect, it } from "vitest";
-import { computeAssets, estimateConnectedLoadKW, estimateCriticalLoadKW } from "./calculator";
-import { DEFAULT_RULES } from "./config";
+import { computeAssets } from "./calculator";
+import { CATALOG, DEFAULT_PRICE_LIST, DEFAULT_RULES } from "./config";
 import { WarehouseInputs } from "./types";
 
-const baseInputs: WarehouseInputs = {
-  totalAreaSqFt: 50000,
-  officeAreaSqFt: 2000,
-  clearHeightFt: 32,
-  numDockDoors: 8,
-  numPersonnelDoors: 4,
-  numEmployees: 40,
-  hasHTSupply: true,
-  connectedLoadKW: null,
-  criticalLoadKW: null,
-  backupCoveragePercent: 80,
-};
-
-describe("estimateConnectedLoadKW", () => {
-  it("uses the explicit value when provided", () => {
-    expect(
-      estimateConnectedLoadKW({ ...baseInputs, connectedLoadKW: 250 }, DEFAULT_RULES),
-    ).toBe(250);
-  });
-
-  it("estimates from area load densities when not provided", () => {
-    const floorArea = baseInputs.totalAreaSqFt - baseInputs.officeAreaSqFt;
-    const expected =
-      (floorArea * DEFAULT_RULES.backup.warehouseLoadDensityWPerSqFt +
-        baseInputs.officeAreaSqFt * DEFAULT_RULES.backup.officeLoadDensityWPerSqFt) /
-      1000;
-    expect(estimateConnectedLoadKW(baseInputs, DEFAULT_RULES)).toBeCloseTo(expected);
-  });
-});
-
-describe("estimateCriticalLoadKW", () => {
-  it("uses the explicit value when provided", () => {
-    expect(
-      estimateCriticalLoadKW({ ...baseInputs, criticalLoadKW: 30 }, DEFAULT_RULES, 200),
-    ).toBe(30);
-  });
-
-  it("falls back to a share of connected load", () => {
-    const connected = 200;
-    const expected = (connected * DEFAULT_RULES.backup.criticalLoadSharePercent) / 100;
-    expect(estimateCriticalLoadKW(baseInputs, DEFAULT_RULES, connected)).toBeCloseTo(
-      expected,
-    );
-  });
-});
-
 describe("computeAssets", () => {
-  it("produces one line per known asset id with non-negative quantities", () => {
-    const lines = computeAssets(baseInputs, DEFAULT_RULES);
-    const ids = lines.map((l) => l.id);
-    expect(new Set(ids).size).toBe(ids.length); // no duplicate ids
+  it("produces one line per catalog item with non-negative quantities", () => {
+    const inputs: WarehouseInputs = { warehouseName: "", totalAreaSqFt: 6000 };
+    const lines = computeAssets(inputs, DEFAULT_RULES);
+    expect(lines).toHaveLength(CATALOG.length);
     for (const line of lines) {
       expect(line.quantity).toBeGreaterThanOrEqual(0);
       expect(Number.isFinite(line.quantity)).toBe(true);
     }
   });
 
-  it("scales high-bay fixture count with floor area", () => {
-    const small = computeAssets(baseInputs, DEFAULT_RULES);
+  it("scales per-1000-sqft items with area", () => {
+    const small = computeAssets(
+      { warehouseName: "", totalAreaSqFt: 5000 },
+      DEFAULT_RULES,
+    );
     const large = computeAssets(
-      { ...baseInputs, totalAreaSqFt: baseInputs.totalAreaSqFt * 2 },
+      { warehouseName: "", totalAreaSqFt: 10000 },
       DEFAULT_RULES,
     );
     const getQty = (lines: typeof small, id: string) =>
       lines.find((l) => l.id === id)!.quantity;
-    expect(getQty(large, "highbay-fixtures")).toBeGreaterThan(
-      getQty(small, "highbay-fixtures"),
+    expect(getQty(large, "led-bulb-35w")).toBeGreaterThan(
+      getQty(small, "led-bulb-35w"),
     );
   });
 
-  it("omits the transformer when there is no HT supply", () => {
-    const lines = computeAssets({ ...baseInputs, hasHTSupply: false }, DEFAULT_RULES);
-    const transformer = lines.find((l) => l.id === "transformer")!;
-    expect(transformer.quantity).toBe(0);
-  });
-
-  it("includes a transformer sized off connected load when HT supply is selected", () => {
-    const lines = computeAssets(
-      { ...baseInputs, hasHTSupply: true, connectedLoadKW: 100 },
+  it("keeps fixed-quantity items constant regardless of area", () => {
+    const small = computeAssets(
+      { warehouseName: "", totalAreaSqFt: 1000 },
       DEFAULT_RULES,
     );
-    const transformer = lines.find((l) => l.id === "transformer")!;
-    expect(transformer.quantity).toBe(1);
-  });
-
-  it("sizes the DG set and ATS panel to zero when backup coverage is zero", () => {
-    const lines = computeAssets(
-      { ...baseInputs, backupCoveragePercent: 0 },
+    const large = computeAssets(
+      { warehouseName: "", totalAreaSqFt: 50000 },
       DEFAULT_RULES,
     );
-    expect(lines.find((l) => l.id === "dg-set")!.quantity).toBe(0);
-    expect(lines.find((l) => l.id === "ats-panel")!.quantity).toBe(0);
+    expect(small.find((l) => l.id === "mcb-32a")!.quantity).toBe(2);
+    expect(large.find((l) => l.id === "mcb-32a")!.quantity).toBe(2);
+    expect(small.find((l) => l.id === "surface-gangbox")!.quantity).toBe(1);
   });
 
-  it("always includes exactly one main LT panel", () => {
-    const lines = computeAssets(baseInputs, DEFAULT_RULES);
-    expect(lines.find((l) => l.id === "main-lt-panel")!.quantity).toBe(1);
+  it("sets the site allowance quantity equal to the raw area", () => {
+    const lines = computeAssets(
+      { warehouseName: "", totalAreaSqFt: 7000 },
+      DEFAULT_RULES,
+    );
+    expect(lines.find((l) => l.id === "site-misc-allowance")!.quantity).toBe(
+      7000,
+    );
+  });
+
+  it("respects a custom rule override for a single item", () => {
+    const customRules = {
+      ...DEFAULT_RULES,
+      "ceiling-fan": { qtyPer1000SqFt: 10 },
+    };
+    const lines = computeAssets(
+      { warehouseName: "", totalAreaSqFt: 1000 },
+      customRules,
+    );
+    expect(lines.find((l) => l.id === "ceiling-fan")!.quantity).toBe(10);
+  });
+
+  const estimateTotal = (areaSqFt: number) => {
+    const lines = computeAssets({ warehouseName: "", totalAreaSqFt: areaSqFt }, DEFAULT_RULES);
+    return lines.reduce((sum, l) => sum + l.quantity * (DEFAULT_PRICE_LIST[l.id] ?? 0), 0);
+  };
+
+  it("is unbiased in aggregate across the two calibration sites", () => {
+    // Ashok Vihar: 7000 sqft, actual total Rs 264,985
+    // Naraina: 5400 sqft, actual total Rs 159,255
+    // Because ratios are averaged across two sites with different per-sqft
+    // intensities, any one site's estimate can be off by ~20%+, but the
+    // combined estimate stays close to the combined actual.
+    const estimated = estimateTotal(7000) + estimateTotal(5400);
+    const actual = 264985 + 159255;
+    expect(Math.abs(estimated - actual) / actual).toBeLessThan(0.1);
+  });
+
+  it("stays within a loose bound per individual calibration site", () => {
+    expect(Math.abs(estimateTotal(7000) - 264985) / 264985).toBeLessThan(0.3);
+    expect(Math.abs(estimateTotal(5400) - 159255) / 159255).toBeLessThan(0.3);
   });
 });

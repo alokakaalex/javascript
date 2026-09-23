@@ -1,0 +1,63 @@
+"use server";
+
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { ROLE_INFO } from "@/lib/expansion/roles";
+import { endSession, requireUser, startSession } from "@/lib/server/session";
+import { authenticate, changePassword, redeemToken, UserError } from "@/lib/server/users";
+
+export interface FormState {
+  error?: string;
+  success?: string;
+}
+
+function field(formData: FormData, name: string): string {
+  const v = formData.get(name);
+  return typeof v === "string" ? v : "";
+}
+
+export async function login(_: FormState, formData: FormData): Promise<FormState> {
+  let portal: string;
+  try {
+    const user = await authenticate(field(formData, "email"), field(formData, "password"));
+    await startSession(user.id, (await headers()).get("user-agent"));
+    portal = ROLE_INFO[user.role].portal;
+  } catch (error) {
+    if (error instanceof UserError) return { error: error.message };
+    throw error;
+  }
+  redirect(portal);
+}
+
+export async function logout() {
+  await endSession();
+  redirect("/login");
+}
+
+export async function setPasswordFromLink(_: FormState, formData: FormData): Promise<FormState> {
+  const password = field(formData, "password");
+  if (password !== field(formData, "confirm")) return { error: "Passwords don't match." };
+  let portal: string;
+  try {
+    const user = await redeemToken(field(formData, "token"), password);
+    await startSession(user.id, (await headers()).get("user-agent"));
+    portal = ROLE_INFO[user.role].portal;
+  } catch (error) {
+    if (error instanceof UserError) return { error: error.message };
+    throw error;
+  }
+  redirect(portal);
+}
+
+export async function updatePassword(_: FormState, formData: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const next = field(formData, "next");
+  if (next !== field(formData, "confirm")) return { error: "New passwords don't match." };
+  try {
+    await changePassword(user, field(formData, "current"), next);
+    return { success: "Password updated." };
+  } catch (error) {
+    if (error instanceof UserError) return { error: error.message };
+    throw error;
+  }
+}

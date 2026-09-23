@@ -13,9 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Warehouse Electrical Asset Model",
+  title: {
+    default: "Expansion Portal",
+    template: "%s · Expansion Portal",
+  },
   description:
-    "Estimate electrical asset counts and costs for a new warehouse rollout.",
+    "Property sourcing and approvals for the expansion project, plus the warehouse electrical asset calculator.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -118,6 +118,8 @@ export function canUpload(viewer: User, row: PropertyRow, category: FileCategory
 }
 
 export interface UploadInput {
+  /** Demo seeding only: a fixed id so every server instance serves the same sample files. */
+  fileId?: string;
   category: FileCategory;
   ownerId: number | null;
   mime: string;
@@ -158,7 +160,7 @@ export async function saveUpload(viewer: User, propertyId: number, upload: Uploa
   const count = (db().prepare("SELECT COUNT(*) AS n FROM files WHERE property_id = ?").get(propertyId) as { n: number }).n;
   if (count >= config.maxFilesPerProperty) throw new PropertyError("This property has reached its file limit.");
 
-  const id = randomUUID();
+  const id = upload.fileId ?? randomUUID();
   const key = `${propertyId}/${id}`;
   const dest = localPath(key);
   const temp = `${dest}.part`;

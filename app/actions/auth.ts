@@ -3,6 +3,8 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ROLE_INFO } from "@/lib/expansion/roles";
+import { config } from "@/lib/server/config";
+import { DEMO_PASSWORD, DEMO_USERS } from "@/lib/server/demo";
 import { endSession, requireUser, startSession } from "@/lib/server/session";
 import { authenticate, changePassword, redeemToken, UserError } from "@/lib/server/users";
 
@@ -60,4 +62,14 @@ export async function updatePassword(_: FormState, formData: FormData): Promise<
     if (error instanceof UserError) return { error: error.message };
     throw error;
   }
+}
+
+/** Demo only: one-click sign-in as a sample account. */
+export async function demoLogin(formData: FormData) {
+  if (!config.demoMode) redirect("/login");
+  const account = DEMO_USERS.find((u) => u.id === field(formData, "userId"));
+  if (!account) redirect("/login");
+  const user = await authenticate(account.email, DEMO_PASSWORD);
+  await startSession(user.id, (await headers()).get("user-agent"));
+  redirect(ROLE_INFO[user.role].portal);
 }

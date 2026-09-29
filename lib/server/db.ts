@@ -222,9 +222,9 @@ const MIGRATIONS: string[] = [
 ];
 
 function open(): DatabaseSync {
-  // Serverless hosts wipe the filesystem between invocations; running here
-  // would silently lose every document. Refuse instead.
-  if (process.env.VERCEL && !process.env.VITEST) {
+  // Serverless hosts wipe the filesystem between invocations; running real
+  // data there would silently lose every document. Only the demo may run.
+  if (process.env.VERCEL && !config.demoMode && !process.env.VITEST) {
     throw new Error(
       "The Expansion Portal needs a server with a persistent disk and can't run on Vercel. Deploy it with render.yaml or Docker (see README → Going live).",
     );

@@ -10,9 +10,18 @@ function int(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-const dataDir = path.resolve(/*turbopackIgnore: true*/ process.env.DATA_DIR || path.join(process.cwd(), "data"));
+// Demo mode: seeded sample data, one-click sign-in per role, and a banner
+// saying data resets. On by default on Vercel (whose disk is temporary).
+const demoMode = process.env.DEMO_MODE === "true" || (Boolean(process.env.VERCEL) && process.env.DEMO_MODE !== "false");
+// Vercel's filesystem is read-only apart from /tmp.
+const defaultDataDir = process.env.VERCEL ? "/tmp/expansion-portal" : path.join(process.cwd(), "data");
+const dataDir = path.resolve(/*turbopackIgnore: true*/ process.env.DATA_DIR || defaultDataDir);
+// Vercel functions accept request bodies up to 4.5 MB.
+const hostLimitMb = process.env.VERCEL ? 4 : Infinity;
+const mb = (name: string, fallback: number) => Math.min(int(name, fallback), hostLimitMb) * 1024 * 1024;
 
 export const config = {
+  demoMode,
   dataDir,
   databasePath: process.env.DATABASE_PATH || path.join(dataDir, "expansion.db"),
   uploadsDir: path.join(dataDir, "uploads"),
@@ -57,8 +66,8 @@ export const config = {
 
   sessionDays: int("SESSION_DAYS", 7),
   inviteDays: int("INVITE_DAYS", 7),
-  maxImageBytes: int("MAX_IMAGE_MB", 25) * 1024 * 1024,
-  maxDocumentBytes: int("MAX_DOCUMENT_MB", 25) * 1024 * 1024,
-  maxVideoBytes: int("MAX_VIDEO_MB", 500) * 1024 * 1024,
+  maxImageBytes: mb("MAX_IMAGE_MB", 25),
+  maxDocumentBytes: mb("MAX_DOCUMENT_MB", 25),
+  maxVideoBytes: mb("MAX_VIDEO_MB", 500),
   maxFilesPerProperty: int("MAX_FILES_PER_PROPERTY", 300),
 };

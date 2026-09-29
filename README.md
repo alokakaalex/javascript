@@ -127,6 +127,24 @@ On first start the access manager from `ADMIN_EMAIL` /
 Node prints an `ExperimentalWarning` for SQLite at startup; it's harmless
 (`NODE_OPTIONS=--disable-warning=ExperimentalWarning` silences it).
 
+## Demo environment (for walkthroughs)
+
+With `DEMO_MODE=true` — and automatically on Vercel — the portal runs as a
+demo:
+
+- nine sample accounts, one per role plus a view-only sales member, all
+  with password `Demo@12345`, listed on the sign-in page for one-click
+  sign-in;
+- eight sample properties seeded at different stages (new, rejected, on
+  hold, awaiting Sales, awaiting documents, awaiting the Founder, awaiting
+  the agreement with stamp duty requested, and fully completed);
+- an amber banner saying data resets, and uploads capped at 4 MB (Vercel's
+  request limit).
+
+Vercel's disk is temporary, so anything added in the demo disappears when
+Vercel recycles the server. Use it to show the flow, never for real
+documents; the portal refuses to run on Vercel outside demo mode.
+
 ## Going live
 
 It needs a long-running Node server with a **persistent disk** and HTTPS.

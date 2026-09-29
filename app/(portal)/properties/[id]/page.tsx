@@ -26,6 +26,7 @@ import {
   OWNER_DOCUMENTS,
   PROPERTY_DOCUMENTS,
   STAGE_INFO,
+  STAMP_DUTY_REQUESTERS,
   stageIndex,
   type FileCategory,
   type Stage,
@@ -129,6 +130,9 @@ function ReviewActions({ p, user }: { p: PropertyView; user: User }) {
   if (p.state !== "active" && p.state !== "on_hold") return null;
   const info = STAGE_INFO[stage];
   if (stage === "sales_review") {
+    if (!user.salesApprover) {
+      return <Alert tone="info">You have view access. Approval for the sales team is given by the designated sales approvers.</Alert>;
+    }
     const mine = p.decisions.find((d) => d.round === p.round && d.stage === stage && d.decidedBy === user.id);
     if (mine) return <Alert tone="info">You {DECISION_LABEL[mine.decision].toLowerCase()} this property. Waiting for the rest of the sales team.</Alert>;
   }
@@ -425,7 +429,7 @@ function Payments({ p, row, user }: { p: PropertyView; row: PropertyRow; user: U
 
         <section className="space-y-2">
           <h3 className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Stamp duty (lease registration)</h3>
-          {stamps.length === 0 && user.role !== "expansion_manager" ? <p className="text-xs text-zinc-500">Not requested.</p> : null}
+          {stamps.length === 0 && !STAMP_DUTY_REQUESTERS.includes(user.role) ? <p className="text-xs text-zinc-500">Not requested.</p> : null}
           {stamps.map((x) => (
             <div key={x.id} className="space-y-2">
               <div className="rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
@@ -454,7 +458,7 @@ function Payments({ p, row, user }: { p: PropertyView; row: PropertyRow; user: U
               )}
             </div>
           ))}
-          {user.role === "expansion_manager" && reachedToken ? (
+          {STAMP_DUTY_REQUESTERS.includes(user.role) && reachedToken ? (
             <details className="rounded-md border border-dashed border-zinc-300 p-3 dark:border-zinc-700" open={stamps.length === 0 ? undefined : false}>
               <summary className="cursor-pointer text-sm text-zinc-700 dark:text-zinc-300">Request stamp duty release</summary>
               <div className="mt-3 space-y-3">

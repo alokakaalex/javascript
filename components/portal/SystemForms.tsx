@@ -11,7 +11,7 @@ function Result({ state }: { state: SystemState }) {
   return null;
 }
 
-export function SystemPanel({ settings }: { settings: Settings }) {
+export function SystemPanel({ settings, approvers }: { settings: Settings; approvers: number }) {
   const [saved, save, saving] = useActionState<SystemState, FormData>(saveSettings, {});
   const [backup, runBackup, backingUp] = useActionState<SystemState>(backupNow, {});
   const [verified, verify, verifying] = useActionState<SystemState>(verifyStorage, {});
@@ -21,9 +21,15 @@ export function SystemPanel({ settings }: { settings: Settings }) {
         <form action={save} className="space-y-3">
           <Result state={saved} />
           <p className="text-sm text-zinc-500">
-            Every sales team member can vote. A property moves to Ops once this many approve, or is rejected once this many
-            reject — whichever comes first.
+            Only sales members with approval access vote (set per person on Access &amp; roles; currently {approvers}). A
+            property moves to Ops once this many approve, or is rejected once this many reject — whichever comes first.
           </p>
+          {settings.salesApprovalsRequired > approvers ? (
+            <Alert tone="warning">
+              {approvers === 0 ? "No sales member has approval access yet" : `Only ${approvers} sales member(s) can approve`}, so properties
+              can&apos;t pass Sales review. Give more people approval access or lower the number.
+            </Alert>
+          ) : null}
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium">Approvals needed</span>

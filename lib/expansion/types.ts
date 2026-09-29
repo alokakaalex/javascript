@@ -14,6 +14,8 @@ export interface User {
   name: string;
   role: Role;
   status: UserStatus;
+  /** Sales team only: may approve or reject (others have view access). */
+  salesApprover: boolean;
   lastLoginAt: string | null;
   createdAt: string;
 }

@@ -6,6 +6,7 @@ import { backupIsStale, listBackups, storageStatus } from "@/lib/server/backups"
 import { emailEnabled } from "@/lib/server/mailer";
 import { requireRole } from "@/lib/server/session";
 import { getSettings } from "@/lib/server/settings";
+import { salesApproverCount } from "@/lib/server/users";
 
 export const metadata: Metadata = { title: "Backups & settings" };
 
@@ -52,7 +53,7 @@ export default async function SystemPage() {
         </Card>
       </div>
 
-      <SystemPanel settings={settings} />
+      <SystemPanel settings={settings} approvers={salesApproverCount()} />
 
       <Card title="Recent backups">
         {backups.length === 0 ? (

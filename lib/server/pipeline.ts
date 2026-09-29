@@ -9,6 +9,7 @@ import {
   DECISION_LABEL,
   missingDocuments,
   STAGE_INFO,
+  STAMP_DUTY_REQUESTERS,
   stageIndex,
   type Decision,
   type FileCategory,
@@ -55,6 +56,15 @@ function atStage(viewer: User, id: number, stage: Stage, allowHold = false): Pro
   return row;
 }
 
+/** Sales approvers get the request to decide; the rest of the sales team get it for information. */
+function notifySalesTeam(approvers: NewNotification, viewers: NewNotification) {
+  const members = db().prepare("SELECT id, sales_approver FROM users WHERE role = 'sales' AND status = 'active'").all() as {
+    id: string;
+    sales_approver: number;
+  }[];
+  for (const m of members) notifyUser(m.id, m.sales_approver ? approvers : viewers);
+}
+
 function notifyMany(targets: { user?: string; roles?: Parameters<typeof notifyRole>[0][] }, n: NewNotification) {
   if (targets.user) notifyUser(targets.user, n);
   for (const r of targets.roles ?? []) notifyRole(r, n);
@@ -78,6 +88,9 @@ export function decide(viewer: User, id: number, decision: Decision, remarksRaw:
     if (decision === "hold" && row.state === "on_hold") throw new PropertyError("This property is already on hold.");
 
     if (stage === "sales_review") {
+      if (!viewer.salesApprover) {
+        throw new PropertyError("You have view access to sales reviews. Approvals are given by the designated sales approvers.");
+      }
       const voted = db()
         .prepare("SELECT 1 FROM decisions WHERE property_id = ? AND round = ? AND stage = ? AND decided_by = ?")
         .get(id, row.round, stage, viewer.id);
@@ -137,7 +150,10 @@ function notifyDecision(viewer: User, row: PropertyRow, stage: Stage, decision: 
     case "bl_review":
       notifyMany({ user: row.created_by, roles: ["expansion_manager"] }, decided);
       if (decision === "approved") {
-        notifyRole("sales", n(`Awaiting your review: ${label(row)}`, "Business Leaders approved this property. Review the details and media and approve or reject it."));
+        notifySalesTeam(
+          n(`Awaiting your decision: ${label(row)}`, "Business Leaders approved this property. Review the details and media and approve or reject it."),
+          n(`For your review: ${label(row)}`, "Business Leaders approved this property. You have view access; the designated sales approvers will decide."),
+        );
       }
       break;
     case "sales_review":
@@ -430,7 +446,7 @@ export function recordPayment(viewer: User, id: number, kind: "token" | "balance
 }
 
 export function requestStampDuty(viewer: User, id: number, input: StampDutyRequestInput) {
-  requireRole(viewer, "expansion_manager");
+  requireRole(viewer, ...STAMP_DUTY_REQUESTERS);
   tx(() => {
     const row = propertyRow(id);
     if (!row) throw new PropertyError("Property not found.");

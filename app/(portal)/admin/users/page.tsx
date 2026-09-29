@@ -27,6 +27,9 @@ const ACTION_LABEL: Record<string, string> = {
   "user.disabled": "Disabled",
   "user.enabled": "Re-enabled",
   "user.locked": "Locked after failed sign-ins:",
+  "user.sales_approver_on": "Gave sales approval access to",
+  "user.sales_approver_off": "Removed sales approval access from",
+  "settings.updated": "Changed settings",
 };
 
 export default async function UsersPage() {
@@ -81,6 +84,11 @@ export default async function UsersPage() {
                   <td className="px-3 py-3 align-top">
                     <div className="font-medium text-zinc-900 dark:text-zinc-100">{u.name}</div>
                     <div className="text-xs text-zinc-500">{u.email}</div>
+                    {u.role === "sales" ? (
+                      <div className={`mt-0.5 text-xs font-medium ${u.salesApprover ? "text-emerald-700 dark:text-emerald-400" : "text-zinc-500"}`}>
+                        {u.salesApprover ? "✓ Sales approver" : "Sales — view only"}
+                      </div>
+                    ) : null}
                   </td>
                   <td className={`px-3 py-3 align-top font-medium capitalize ${STATUS_TONE[u.status]}`}>{u.status}</td>
                   <td className="whitespace-nowrap px-3 py-3 align-top text-zinc-500">{u.lastLoginAt ? formatDateTime(u.lastLoginAt) : "Never"}</td>

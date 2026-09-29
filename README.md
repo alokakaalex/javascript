@@ -14,7 +14,7 @@ electrical asset calculator lives at `/calculator` in the same app.
 |---|---|---|---|---|
 | 1 | Expansion Manager review | Expansion Manager | Approve or reject, with remarks | Real estate manager; on approval, Business Leaders |
 | 2 | Business Leaders review | Business Leaders | Approve, hold or reject, with remarks | Expansion Manager and real estate manager; on approval, the whole Sales team |
-| 3 | Sales review | Every Sales team member | Each member votes approve/reject with remarks; the stage resolves when enough agree (setting, default 1) | Real estate manager on every vote; Expansion Manager when it resolves; on approval, Ops |
+| 3 | Sales review | Designated sales approvers | Only sales members given approval access vote approve/reject with remarks; the stage resolves when enough agree (setting, default 1). The rest of the sales team can view | Real estate manager on every vote; Expansion Manager when it resolves; on approval, Ops |
 | 4 | Ops site visit | Ops | Upload site photos/videos, mark visited, write the scope of work, approve or reject | Real estate manager and Expansion Manager |
 | 5 | Owner & property documents | Real estate manager | Owners (one or more) with Aadhaar front/back, PAN, contact and bank details; electricity bill, lease deed / registered document / power of attorney, property tax receipt, GST (if an organisation), and optional water bill, rent agreement, tenant NOC, other | Expansion Manager |
 | 6 | LOI issued | Expansion Manager | Upload the LOI; it's emailed to every owner with an email address | Real estate manager (to get it signed) |
@@ -23,7 +23,7 @@ electrical asset calculator lives at `/calculator` in the same app.
 | 9 | Token released | Finance | Upload the UTR receipt, enter amount/UTR/date, mark paid | Expansion Manager and Founder |
 | 10 | Signed agreement | Expansion Manager | Upload the agreement (notarised / ₹100 stamp paper, signed with the Founder) | Finance, Founder |
 | 11 | Balance released | Finance | Sees the agreement, landlord bank details and the token payment; pays the remainder, marks paid with UTR and receipt | Expansion Manager and Founder |
-| — | Stamp duty (optional) | Expansion Manager → Finance | Any time after the Founder approves: request stamp duty with the calculation PDF; Finance pays and marks paid with UTR | Finance and Founder; then Expansion Manager and Founder |
+| — | Stamp duty (optional) | Access Manager or Expansion Manager → Finance | Any time after the Founder approves: request stamp duty with the calculation PDF; Finance pays and marks paid with UTR | Finance and Founder; then Expansion Manager and Founder |
 
 - **Remarks are required** for every approve, hold and reject, and every
   decision is recorded with the person's name and time.
@@ -42,7 +42,7 @@ electrical asset calculator lives at `/calculator` in the same app.
 | Expansion Manager | `/expansion` | Complete dashboard: every property, all details, media, documents, decisions and payments |
 | Real Estate Manager | `/real-estate` | Everything about their own properties (payment status but not Finance's receipts) |
 | Business Leader | `/business` | Store name, total/carpet area, asking rent, security deposit, rent-free period, advance rent, and decisions |
-| Sales Team | `/sales` | All property details, location and photos/videos (not owner documents) |
+| Sales Team | `/sales` | All property details, location and photos/videos (not owner documents). Only members with **approval access** (set per person on Access & roles) can approve or reject; the rest view |
 | Ops Team | `/ops` | All property details and media, plus the site visit they record |
 | Founder | `/founder` | Everything, including KYC documents and payments |
 | Finance | `/finance` | Store name, address, area, advance rent, security deposit, decisions, signed LOI, agreement, owner names and bank details, payments and receipts (not Aadhaar/PAN or property documents) |
@@ -127,12 +127,72 @@ On first start the access manager from `ADMIN_EMAIL` /
 Node prints an `ExperimentalWarning` for SQLite at startup; it's harmless
 (`NODE_OPTIONS=--disable-warning=ExperimentalWarning` silences it).
 
-### Deploying
+## Going live
 
-Run it as a long-lived Node server (`npm run build && npm start`) on a VM
-or container with a **persistent disk** mounted at `DATA_DIR`, behind HTTPS.
-Serverless hosts like Vercel have no persistent disk and won't work. Configure
-the S3 bucket so the data survives even if that server is lost.
+It needs a long-running Node server with a **persistent disk** and HTTPS.
+Serverless hosts like Vercel have no persistent disk and won't work.
+
+### 1. Create the off-site bucket (do this first)
+
+Cloudflare R2 is the simplest and has no download fees; AWS S3 in
+`ap-south-1` (Mumbai) works equally well.
+
+- **R2:** Cloudflare dashboard → R2 → Create bucket (e.g.
+  `fairdeal-expansion-portal`) → Manage R2 API tokens → create a token with
+  *Object Read & Write* on that bucket. Note the access key ID, secret and
+  the S3 endpoint `https://<account-id>.r2.cloudflarestorage.com`. Set
+  `S3_REGION=auto`.
+- **AWS S3:** create the bucket with **Versioning enabled**, then an IAM
+  user with `s3:PutObject`, `s3:GetObject` and `s3:ListBucket` on it. Leave
+  `S3_ENDPOINT` empty.
+
+### 2. Email (for invites, notifications and LOIs)
+
+Any SMTP account works. For Google Workspace: create (or pick) a mailbox
+such as `expansion@yourcompany.com`, turn on 2-step verification, create an
+*App password*, and use `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`,
+`SMTP_USER`/`SMTP_FROM` = that address, `SMTP_PASS` = the app password.
+
+### 3a. Deploy on Render (recommended, ~10 minutes)
+
+`render.yaml` in this repo describes the service, including a 20 GB
+persistent disk, the health check and automatic deploys.
+
+1. render.com → **New → Blueprint** → connect GitHub → pick this repo and
+   the default branch.
+2. Fill in the values it asks for: `APP_URL` (e.g.
+   `https://expansion-portal.onrender.com`, or your own domain),
+   `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_INITIAL_PASSWORD`, the `S3_*` values
+   from step 1 and the `SMTP_*` values from step 2. Leave any you don't use
+   empty.
+3. **Apply.** The first deploy takes a few minutes. The Starter instance plus
+   the disk costs roughly US$7–10/month.
+4. Optional: Settings → Custom Domains → add e.g.
+   `expansion.yourcompany.com` and create the CNAME it shows; then update
+   `APP_URL` to match.
+
+### 3b. Or any server with Docker
+
+```bash
+cp .env.example .env    # fill it in; DATA_DIR is set to /data in the image
+docker compose up -d --build
+```
+
+Put it behind HTTPS (Caddy: `expansion.yourcompany.com { reverse_proxy localhost:3000 }`).
+The `portal-data` volume holds the database, uploads and local backups.
+
+### 4. First sign-in
+
+Open the site, sign in with `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD`,
+change the password under **Account**, then:
+
+- **Access & roles:** add each person with their role. For sales, tick *Can
+  approve* for the members who approve.
+- **Backups & settings:** confirm "Off-site bucket" shows your bucket, click
+  **Back up now**, and check the backup is marked ✓ off-site.
+
+`/api/health` returns `{"ok":true}` when the app and database are up; point
+an uptime monitor (e.g. UptimeRobot) at it.
 
 ## Code layout
 

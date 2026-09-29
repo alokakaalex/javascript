@@ -34,9 +34,9 @@ function IssuedLink({ link }: { link: NonNullable<AdminFormState["link"]> }) {
   );
 }
 
-function RoleSelect({ name = "role", defaultValue, id }: { name?: string; defaultValue?: Role; id?: string }) {
+function RoleSelect({ name = "role", defaultValue, id, onChange }: { name?: string; defaultValue?: Role; id?: string; onChange?: (r: Role) => void }) {
   return (
-    <select id={id} name={name} defaultValue={defaultValue ?? ""} required className={inputClass}>
+    <select id={id} name={name} defaultValue={defaultValue ?? ""} required className={inputClass} onChange={(e) => onChange?.(e.target.value as Role)}>
       {defaultValue ? null : (
         <option value="" disabled>
           Choose a role…
@@ -53,6 +53,7 @@ function RoleSelect({ name = "role", defaultValue, id }: { name?: string; defaul
 
 export function AddUserForm() {
   const [state, action, pending] = useActionState<AdminFormState, FormData>(addUser, {});
+  const [role, setRole] = useState<Role | "">("");
   return (
     <div className="space-y-4">
       {state.error ? <Alert tone="error">{state.error}</Alert> : null}
@@ -74,11 +75,17 @@ export function AddUserForm() {
           <label htmlFor="new-role" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Role
           </label>
-          <RoleSelect id="new-role" />
+          <RoleSelect id="new-role" onChange={setRole} />
         </div>
         <button type="submit" disabled={pending} className={buttonClass.primary}>
           {pending ? "Adding…" : "Add & create invite"}
         </button>
+        {role === "sales" ? (
+          <label className="flex items-center gap-2 text-sm text-zinc-700 sm:col-span-4 dark:text-zinc-300">
+            <input type="checkbox" name="salesApprover" className="h-4 w-4" />
+            Can approve / reject properties (otherwise view only)
+          </label>
+        ) : null}
       </form>
     </div>
   );
@@ -120,6 +127,15 @@ export function UserActions({ user, isSelf }: { user: User; isSelf: boolean }) {
             </button>
           ) : null}
         </form>
+        {user.role === "sales" ? (
+          <form action={action}>
+            {hidden}
+            <input type="hidden" name="intent" value={user.salesApprover ? "approver_off" : "approver_on"} />
+            <button type="submit" disabled={pending} className={`${buttonClass.secondary} px-3 py-1.5`}>
+              {user.salesApprover ? "Remove approval access" : "Give approval access"}
+            </button>
+          </form>
+        ) : null}
         {user.status !== "disabled" ? (
           <form action={action}>
             {hidden}

@@ -88,7 +88,7 @@ function hasOpenStampRequest(propertyId: number): boolean {
 
 /** Whether this viewer may add (or archive) a file of this category on this property right now. */
 export function canUpload(viewer: User, row: PropertyRow, category: FileCategory): boolean {
-  if (CATEGORY_INFO[category].uploader !== viewer.role) return false;
+  if (!CATEGORY_INFO[category].uploaders.includes(viewer.role)) return false;
   if (!canAccess(viewer, row)) return false;
   const at = (stage: Parameters<typeof stageIndex>[0]) => row.stage === stage && row.state === "active";
   const reached = (stage: Parameters<typeof stageIndex>[0]) => row.furthest_stage >= stageIndex(stage);

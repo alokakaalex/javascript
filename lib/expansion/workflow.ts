@@ -103,6 +103,9 @@ export function isEditable(state: PropertyState): boolean {
   return state === "draft" || state === "rejected";
 }
 
+/** Roles that may raise a stamp duty request (sent to Finance). */
+export const STAMP_DUTY_REQUESTERS: readonly Role[] = ["expansion_manager", "admin"];
+
 /** Which stages a role acts on. */
 export function stagesFor(role: Role): Stage[] {
   return STAGES.filter((s) => STAGE_INFO[s].actor === role);
@@ -208,8 +211,8 @@ export interface CategoryInfo {
   perOwner?: boolean;
   /** Roles that may view/download it (beyond these, nobody). */
   viewers: readonly Role[];
-  /** Role that uploads it. */
-  uploader: Role;
+  /** Roles that upload it. */
+  uploaders: readonly Role[];
 }
 
 const MEDIA_VIEWERS: Role[] = ["admin", "expansion_manager", "real_estate", "sales", "ops", "founder"];
@@ -221,13 +224,13 @@ const doc = (label: string, extra: Partial<CategoryInfo> = {}): CategoryInfo => 
   label,
   kind: "document",
   viewers: DOC_VIEWERS,
-  uploader: "real_estate",
+  uploaders: ["real_estate"],
   ...extra,
 });
 
 export const CATEGORY_INFO: Record<FileCategory, CategoryInfo> = {
-  property_media: { label: "Property photos & videos", kind: "media", viewers: MEDIA_VIEWERS, uploader: "real_estate" },
-  ops_media: { label: "Ops site-visit photos & videos", kind: "media", viewers: MEDIA_VIEWERS, uploader: "ops" },
+  property_media: { label: "Property photos & videos", kind: "media", viewers: MEDIA_VIEWERS, uploaders: ["real_estate"] },
+  ops_media: { label: "Ops site-visit photos & videos", kind: "media", viewers: MEDIA_VIEWERS, uploaders: ["ops"] },
   aadhaar_front: doc("Aadhaar card (front)", { perOwner: true }),
   aadhaar_back: doc("Aadhaar card (back)", { perOwner: true }),
   pan_card: doc("PAN card", { perOwner: true }),
@@ -241,13 +244,13 @@ export const CATEGORY_INFO: Record<FileCategory, CategoryInfo> = {
   tenant_noc: doc("NOC from tenants"),
   property_tax_receipt: doc("Property tax receipt"),
   other_document: doc("Other document"),
-  loi: doc("Letter of Intent (LOI)", { uploader: "expansion_manager" }),
-  signed_loi: doc("Signed LOI", { uploader: "expansion_manager", viewers: DEAL_VIEWERS }),
-  agreement: doc("Signed agreement", { uploader: "expansion_manager", viewers: DEAL_VIEWERS }),
-  stamp_duty_calculation: doc("Stamp duty calculation", { uploader: "expansion_manager", viewers: MONEY_VIEWERS }),
-  token_receipt: doc("Token payment UTR receipt", { uploader: "finance", viewers: MONEY_VIEWERS }),
-  balance_receipt: doc("Balance payment UTR receipt", { uploader: "finance", viewers: MONEY_VIEWERS }),
-  stamp_duty_receipt: doc("Stamp duty UTR receipt", { uploader: "finance", viewers: MONEY_VIEWERS }),
+  loi: doc("Letter of Intent (LOI)", { uploaders: ["expansion_manager"] }),
+  signed_loi: doc("Signed LOI", { uploaders: ["expansion_manager"], viewers: DEAL_VIEWERS }),
+  agreement: doc("Signed agreement", { uploaders: ["expansion_manager"], viewers: DEAL_VIEWERS }),
+  stamp_duty_calculation: doc("Stamp duty calculation", { uploaders: ["expansion_manager", "admin"], viewers: MONEY_VIEWERS }),
+  token_receipt: doc("Token payment UTR receipt", { uploaders: ["finance"], viewers: MONEY_VIEWERS }),
+  balance_receipt: doc("Balance payment UTR receipt", { uploaders: ["finance"], viewers: MONEY_VIEWERS }),
+  stamp_duty_receipt: doc("Stamp duty UTR receipt", { uploaders: ["finance"], viewers: MONEY_VIEWERS }),
 };
 
 export function isFileCategory(value: unknown): value is FileCategory {

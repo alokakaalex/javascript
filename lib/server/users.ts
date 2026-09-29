@@ -16,6 +16,7 @@ export interface UserRow {
   name: string;
   role: Role;
   status: UserStatus;
+  sales_approver: number;
   password_hash: string | null;
   failed_logins: number;
   locked_until: string | null;
@@ -30,6 +31,7 @@ export function toUser(row: UserRow): User {
     name: row.name,
     role: row.role,
     status: row.status,
+    salesApprover: row.sales_approver === 1,
     lastLoginAt: row.last_login_at,
     createdAt: row.created_at,
   };
@@ -109,7 +111,7 @@ function issueToken(user: UserRow, purpose: "invite" | "reset"): IssuedLink {
 
 export function inviteUser(
   actor: User,
-  input: { email: string; name: string; role: Role },
+  input: { email: string; name: string; role: Role; salesApprover?: boolean },
 ): { user: User; link: IssuedLink } {
   const email = normalizeEmail(input.email);
   const name = input.name.trim();
@@ -121,12 +123,17 @@ export function inviteUser(
     const id = randomUUID();
     db()
       .prepare(
-        `INSERT INTO users (id, email, name, role, status, created_by, created_at)
-         VALUES (?, ?, ?, ?, 'invited', ?, ?)`,
+        `INSERT INTO users (id, email, name, role, status, sales_approver, created_by, created_at)
+         VALUES (?, ?, ?, ?, 'invited', ?, ?, ?)`,
       )
-      .run(id, email, name, input.role, actor.id, now());
+      .run(id, email, name, input.role, input.role === "sales" && input.salesApprover ? 1 : 0, actor.id, now());
     const row = rowById(id)!;
-    audit({ actorId: actor.id, action: "user.invited", subjectUserId: id, details: `as ${ROLE_INFO[input.role].label}` });
+    audit({
+      actorId: actor.id,
+      action: "user.invited",
+      subjectUserId: id,
+      details: `as ${ROLE_INFO[input.role].label}${input.role === "sales" && input.salesApprover ? " (can approve)" : ""}`,
+    });
     return { user: toUser(row), link: issueToken(row, "invite") };
   });
 }
@@ -281,4 +288,20 @@ export function setUserEnabled(actor: User, userId: string, enabled: boolean) {
       audit({ actorId: actor.id, action: "user.disabled", subjectUserId: userId });
     }
   });
+}
+
+/** Gives or removes a sales team member's right to approve/reject (others in sales have view access). */
+export function setSalesApprover(actor: User, userId: string, approver: boolean) {
+  tx(() => {
+    const row = rowById(userId);
+    if (!row) throw new UserError("User not found.");
+    if (row.role !== "sales") throw new UserError("Only sales team members have approval access to set.");
+    if ((row.sales_approver === 1) === approver) return;
+    db().prepare("UPDATE users SET sales_approver = ? WHERE id = ?").run(approver ? 1 : 0, userId);
+    audit({ actorId: actor.id, action: approver ? "user.sales_approver_on" : "user.sales_approver_off", subjectUserId: userId });
+  });
+}
+
+export function salesApproverCount(): number {
+  return (db().prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'sales' AND status = 'active' AND sales_approver = 1").get() as { n: number }).n;
 }

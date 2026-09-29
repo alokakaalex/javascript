@@ -416,6 +416,7 @@ export function actionQueue(viewer: User): PropertyView[] {
     return [...new Map([...waiting, ...stamp].map((p) => [p.id, p])).values()];
   }
   if (viewer.role === "sales") {
+    if (!viewer.salesApprover) return [];
     return waiting.filter((p) => !p.decisions.some((d) => d.round === p.round && d.stage === "sales_review" && d.decidedBy === viewer.id));
   }
   if (viewer.role === "real_estate") {

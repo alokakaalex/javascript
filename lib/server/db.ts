@@ -217,6 +217,8 @@ const MIGRATIONS: string[] = [
   CREATE TRIGGER audit_no_update BEFORE UPDATE ON audit_log BEGIN SELECT RAISE(ABORT, 'audit entries are never changed'); END;
   CREATE TRIGGER users_no_delete BEFORE DELETE ON users BEGIN SELECT RAISE(ABORT, 'users are disabled, never deleted'); END;
   `,
+  // Only designated sales team members may approve or reject; the rest view.
+  `ALTER TABLE users ADD COLUMN sales_approver INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 function open(): DatabaseSync {

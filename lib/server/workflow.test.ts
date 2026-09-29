@@ -59,12 +59,12 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2
 const PDF = new TextEncoder().encode("%PDF-1.7\n1 0 obj\n");
 
 let seq = 0;
-function makeUser(role: Role, name: string = role): User {
+function makeUser(role: Role, name: string = role, salesApprover = role === "sales"): User {
   const id = `user-${++seq}`;
   db()
-    .prepare("INSERT INTO users (id, email, name, role, status, created_at) VALUES (?, ?, ?, ?, 'active', ?)")
-    .run(id, `${id}@example.com`, name, role, new Date().toISOString());
-  return { id, email: `${id}@example.com`, name, role, status: "active", lastLoginAt: null, createdAt: "" };
+    .prepare("INSERT INTO users (id, email, name, role, status, sales_approver, created_at) VALUES (?, ?, ?, ?, 'active', ?, ?)")
+    .run(id, `${id}@example.com`, name, role, salesApprover ? 1 : 0, new Date().toISOString());
+  return { id, email: `${id}@example.com`, name, role, status: "active", salesApprover, lastLoginAt: null, createdAt: "" };
 }
 
 function upload(user: User, propertyId: number, category: FileCategory, opts: { ownerId?: number; pdf?: boolean } = {}) {
@@ -290,6 +290,29 @@ describe("rejections, holds and votes", () => {
     expect(stageOf(id)).toBe("active:ops_review");
   });
 
+  it("lets only designated sales approvers decide; the rest of sales can view", async () => {
+    const viewer = makeUser("sales", "Vik Viewer", false);
+    const id = await submitted();
+    pipeline.decide(em, id, "approved", "ok go");
+    pipeline.decide(bl, id, "approved", "ok go");
+    expect(listNotifications(viewer.id)[0].title).toMatch(/For your review/);
+    expect(listNotifications(sales.id)[0].title).toMatch(/Awaiting your decision/);
+    expect(getProperty(viewer, id)!.files).toHaveLength(1);
+    expect(actionQueue(viewer)).toHaveLength(0);
+    expect(() => pipeline.decide(viewer, id, "approved", "Looks good")).toThrow(/view access/);
+    pipeline.decide(sales, id, "approved", "Looks good");
+    expect(stageOf(id)).toBe("active:ops_review");
+  });
+
+  it("lets the access manager raise a stamp duty request too", async () => {
+    const id = await submitted();
+    db().prepare("UPDATE properties SET furthest_stage = 8, stage = 'token_payment' WHERE id = ?").run(id);
+    await upload(admin, id, "stamp_duty_calculation", { pdf: true });
+    pipeline.requestStampDuty(admin, id, { amount: 30000, remarks: "" });
+    expect(listNotifications(finance.id)[0].title).toMatch(/Stamp duty requested/);
+    expect(() => pipeline.requestStampDuty(re, id, { amount: 1, remarks: "" })).toThrow(/Your role/);
+  });
+
   it("locks editing while in review", async () => {
     const id = createProperty(re, INPUT);
     expect(() => submitProperty(re, id)).toThrow(/at least one photo or video/);
@@ -414,6 +437,7 @@ describe("nothing is ever lost", () => {
 describe("access management", () => {
   it("invites a user who sets a password and signs in", async () => {
     const { user, link } = inviteUser(admin, { email: "New.Person@Example.com", name: "New Person", role: "finance" });
+    expect(inviteUser(admin, { email: "s@example.com", name: "S", role: "sales", salesApprover: true }).user.salesApprover).toBe(true);
     await redeemToken(link.url.split("/invite/")[1], "correct horse 42");
     expect((await authenticate("new.person@example.com", "correct horse 42")).role).toBe("finance");
     expect(user.status).toBe("invited");

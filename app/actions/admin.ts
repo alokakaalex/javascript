@@ -6,7 +6,7 @@ import { requireRole } from "@/lib/server/session";
 import { runBackup } from "@/lib/server/backups";
 import { verifyFiles } from "@/lib/server/files";
 import { updateSettings } from "@/lib/server/settings";
-import { changeRole, inviteUser, issueAccessLink, setUserEnabled, UserError } from "@/lib/server/users";
+import { changeRole, inviteUser, issueAccessLink, setSalesApprover, setUserEnabled, UserError } from "@/lib/server/users";
 
 export interface AdminFormState {
   error?: string;
@@ -35,7 +35,12 @@ export async function addUser(_: AdminFormState, formData: FormData): Promise<Ad
   const role = field(formData, "role");
   if (!isRole(role)) return { error: "Choose a role." };
   return guarded(() => {
-    const { user, link } = inviteUser(actor, { email: field(formData, "email"), name: field(formData, "name"), role });
+    const { user, link } = inviteUser(actor, {
+      email: field(formData, "email"),
+      name: field(formData, "name"),
+      role,
+      salesApprover: field(formData, "salesApprover") === "on",
+    });
     return { link: { email: user.email, ...link } };
   });
 }
@@ -51,6 +56,8 @@ export async function updateUser(_: AdminFormState, formData: FormData): Promise
       changeRole(actor, userId, role);
     } else if (intent === "disable" || intent === "enable") {
       setUserEnabled(actor, userId, intent === "enable");
+    } else if (intent === "approver_on" || intent === "approver_off") {
+      setSalesApprover(actor, userId, intent === "approver_on");
     } else if (intent === "link") {
       const link = issueAccessLink(actor, userId);
       return { link: { email: field(formData, "email"), ...link } };

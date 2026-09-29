@@ -1,68 +1,97 @@
 import "server-only";
 import { formatNumber, propertyCode } from "@/lib/expansion/format";
 import type { PropertyInput } from "@/lib/expansion/propertyInput";
-import { ROLE_INFO } from "@/lib/expansion/roles";
-import type { DecisionRecord, MediaItem, PropertyDetails, PropertyView, User } from "@/lib/expansion/types";
+import type { Role } from "@/lib/expansion/roles";
+import type {
+  DecisionRecord,
+  Owner,
+  Payment,
+  PropertyDetails,
+  PropertyView,
+  StoredFile,
+  User,
+} from "@/lib/expansion/types";
 import {
-  DECISION_LABEL,
+  ACCESS_FROM,
+  BANK_VIEWERS,
+  CATEGORY_INFO,
+  FIELD_VISIBILITY,
   isEditable,
-  nextStatus,
-  pendingStage,
-  pendingStatus,
+  OWNER_VIEWERS,
+  PAYMENT_VIEWERS,
   PROPERTY_FIELDS,
-  reviewerStage,
-  STAGE_LABEL,
   STAGES,
-  visibilityFor,
-  visibleDecisionStages,
+  stageIndex,
+  stagesFor,
+  VISIT_VIEWERS,
   type Decision,
-  type PropertyStatus,
+  type FileCategory,
+  type PropertyState,
   type Stage,
 } from "@/lib/expansion/workflow";
 import { audit } from "./audit";
 import { db, now, tx } from "./db";
-import { notifyRole, notifyUser } from "./notifications";
+import { notifyRole } from "./notifications";
 
 export class PropertyError extends Error {}
 
-interface PropertyRow {
+// --- Rows -------------------------------------------------------------------
+
+export interface PropertyRow {
   id: number;
-  status: PropertyStatus;
+  state: PropertyState;
+  stage: Stage | null;
   round: number;
-  title: string;
+  furthest_stage: number;
+  store_name: string;
   address: string;
   map_url: string | null;
   latitude: number | null;
   longitude: number | null;
-  owner_name: string;
-  area_sqft: number;
-  rent_per_month: number;
+  total_area_sqft: number;
+  carpet_area_sqft: number;
+  asking_rent: number;
   security_deposit: number;
   advance_rent: number;
-  lease_tenure_months: number;
-  rent_escalation_pct: number;
+  lock_in_months: number;
+  structure_type: "tin" | "shed" | "rcc";
+  structure_height_ft: number;
   rent_free_days: number;
   handover_date: string;
-  lock_in_months: number;
+  lease_tenure_months: number | null;
+  rent_escalation_pct: number | null;
   notes: string;
   created_by: string;
   created_by_name: string;
   created_at: string;
   updated_at: string;
   submitted_at: string | null;
+  documents_completed_at: string | null;
+  loi_sent_at: string | null;
+  loi_sent_to: string | null;
+  completed_at: string | null;
 }
 
-interface MediaRow {
+export interface FileRow {
   id: string;
   property_id: number;
-  kind: "image" | "video";
+  owner_id: number | null;
+  category: FileCategory;
+  kind: StoredFile["kind"];
   mime: string;
   original_name: string;
   size_bytes: number;
+  sha256: string;
+  storage_key: string;
+  uploaded_by: string;
+  uploaded_by_name: string;
   created_at: string;
+  archived_at: string | null;
+  payment_id: number | null;
 }
 
 interface DecisionRow {
+  id: number;
   property_id: number;
   round: number;
   stage: Stage;
@@ -73,261 +102,418 @@ interface DecisionRow {
   decided_at: string;
 }
 
+interface OwnerRow {
+  id: number;
+  property_id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  is_organisation: number;
+  gst_number: string | null;
+  pan_number: string | null;
+  bank_account_name: string | null;
+  bank_account_number: string | null;
+  bank_ifsc: string | null;
+  bank_name: string | null;
+}
+
+interface VisitRow {
+  property_id: number;
+  round: number;
+  visited_at: string | null;
+  visited_by_name: string | null;
+  scope_of_work: string;
+  updated_at: string | null;
+}
+
+interface PaymentRow {
+  id: number;
+  property_id: number;
+  kind: Payment["kind"];
+  status: Payment["status"];
+  requested_amount: number | null;
+  requested_by_name: string | null;
+  requested_at: string | null;
+  request_remarks: string | null;
+  amount: number | null;
+  utr: string | null;
+  paid_on: string | null;
+  paid_by_name: string | null;
+  paid_at: string | null;
+  notes: string | null;
+}
+
 const SELECT_PROPERTY = `
   SELECT p.*, u.name AS created_by_name
   FROM properties p JOIN users u ON u.id = p.created_by`;
 
+export function propertyRow(id: number): PropertyRow | undefined {
+  if (!Number.isInteger(id) || id <= 0) return undefined;
+  return db().prepare(`${SELECT_PROPERTY} WHERE p.id = ?`).get(id) as PropertyRow | undefined;
+}
+
 // --- Access -----------------------------------------------------------------
 
-/**
- * SQL condition (on alias p) for the properties a user may open at all:
- * admins see everything, real estate managers their own uploads, and each
- * review team only properties that have reached it.
- */
+/** SQL condition (on alias p) for the properties a user may open at all. */
 function accessCondition(viewer: User): { sql: string; params: (string | number)[] } {
-  switch (viewer.role) {
-    case "admin":
-      return { sql: "1 = 1", params: [] };
-    case "real_estate":
-      return { sql: "p.created_by = ?", params: [viewer.id] };
-    case "sales":
-      return { sql: "p.round > 0", params: [] };
-    case "ops":
-    case "business": {
-      // Reached this stage at least once: the previous stage approved it in some round.
-      const previous = STAGES[STAGES.indexOf(viewer.role) - 1];
-      return {
-        sql: `EXISTS (SELECT 1 FROM decisions d WHERE d.property_id = p.id AND d.stage = ? AND d.decision = 'approved')`,
-        params: [previous],
-      };
-    }
-  }
+  if (viewer.role === "real_estate") return { sql: "p.created_by = ?", params: [viewer.id] };
+  const from = ACCESS_FROM[viewer.role];
+  if (from) return { sql: "p.furthest_stage >= ?", params: [stageIndex(from)] };
+  if (viewer.role === "founder") return { sql: "p.state != 'draft'", params: [] };
+  return { sql: "1 = 1", params: [] };
 }
 
-function toMedia(row: MediaRow): MediaItem {
-  return {
-    id: row.id,
-    kind: row.kind,
-    mime: row.mime,
-    originalName: row.original_name,
-    sizeBytes: row.size_bytes,
-    createdAt: row.created_at,
-  };
+export function canAccess(viewer: User, row: PropertyRow): boolean {
+  if (viewer.role === "real_estate") return row.created_by === viewer.id;
+  const from = ACCESS_FROM[viewer.role];
+  if (from) return row.furthest_stage >= stageIndex(from);
+  if (viewer.role === "founder") return row.state !== "draft";
+  return true;
 }
 
-function toDecision(row: DecisionRow): DecisionRecord {
-  return {
-    round: row.round,
-    stage: row.stage,
-    decision: row.decision,
-    remarks: row.remarks,
-    decidedBy: row.decided_by,
-    decidedByName: row.decided_by_name,
-    decidedAt: row.decided_at,
-  };
-}
+// --- Views ------------------------------------------------------------------
 
 const COLUMN: Record<keyof PropertyDetails, keyof PropertyRow> = {
-  title: "title",
+  storeName: "store_name",
   address: "address",
   mapUrl: "map_url",
   latitude: "latitude",
   longitude: "longitude",
-  ownerName: "owner_name",
-  areaSqft: "area_sqft",
-  rentPerMonth: "rent_per_month",
+  totalAreaSqft: "total_area_sqft",
+  carpetAreaSqft: "carpet_area_sqft",
+  askingRent: "asking_rent",
   securityDeposit: "security_deposit",
   advanceRent: "advance_rent",
-  leaseTenureMonths: "lease_tenure_months",
-  rentEscalationPct: "rent_escalation_pct",
+  lockInMonths: "lock_in_months",
+  structureType: "structure_type",
+  structureHeightFt: "structure_height_ft",
   rentFreeDays: "rent_free_days",
   handoverDate: "handover_date",
-  lockInMonths: "lock_in_months",
+  leaseTenureMonths: "lease_tenure_months",
+  rentEscalationPct: "rent_escalation_pct",
   notes: "notes",
 };
 
-/** Builds what this viewer may see: hidden fields come back null, and hidden media/decisions are dropped. */
-function toView(viewer: User, row: PropertyRow, media: MediaRow[], decisions: DecisionRow[]): PropertyView {
-  const visibility = visibilityFor(viewer.role);
+const SEES_ARCHIVED: readonly Role[] = ["admin", "expansion_manager", "founder"];
+
+export function canSeeFile(role: Role, category: FileCategory): boolean {
+  return CATEGORY_INFO[category].viewers.includes(role);
+}
+
+function toFile(r: FileRow): StoredFile {
+  return {
+    id: r.id,
+    category: r.category,
+    ownerId: r.owner_id,
+    paymentId: r.payment_id,
+    kind: r.kind,
+    mime: r.mime,
+    originalName: r.original_name,
+    sizeBytes: r.size_bytes,
+    sha256: r.sha256,
+    uploadedByName: r.uploaded_by_name,
+    createdAt: r.created_at,
+    archivedAt: r.archived_at,
+  };
+}
+
+function toDecision(r: DecisionRow): DecisionRecord {
+  return {
+    id: r.id,
+    round: r.round,
+    stage: r.stage,
+    decision: r.decision,
+    remarks: r.remarks,
+    decidedBy: r.decided_by,
+    decidedByName: r.decided_by_name,
+    decidedAt: r.decided_at,
+  };
+}
+
+function toOwner(r: OwnerRow, withBank: boolean): Owner {
+  const hasBank = Boolean(r.bank_account_number);
+  return {
+    id: r.id,
+    name: r.name,
+    email: r.email,
+    phone: r.phone,
+    isOrganisation: r.is_organisation === 1,
+    gstNumber: r.gst_number,
+    panNumber: r.pan_number,
+    hasBankDetails: hasBank,
+    bank:
+      withBank && hasBank
+        ? {
+            accountName: r.bank_account_name ?? "",
+            accountNumber: r.bank_account_number ?? "",
+            ifsc: r.bank_ifsc ?? "",
+            bankName: r.bank_name ?? "",
+          }
+        : null,
+  };
+}
+
+function toPayment(r: PaymentRow): Payment {
+  return {
+    id: r.id,
+    kind: r.kind,
+    status: r.status,
+    requestedAmount: r.requested_amount,
+    requestedByName: r.requested_by_name,
+    requestedAt: r.requested_at,
+    requestRemarks: r.request_remarks,
+    amount: r.amount,
+    utr: r.utr,
+    paidOn: r.paid_on,
+    paidByName: r.paid_by_name,
+    paidAt: r.paid_at,
+    notes: r.notes,
+  };
+}
+
+function group<T extends { property_id: number }>(rows: T[]): Map<number, T[]> {
+  const map = new Map<number, T[]>();
+  for (const r of rows) map.set(r.property_id, [...(map.get(r.property_id) ?? []), r]);
+  return map;
+}
+
+function loadRelated(ids: number[]) {
+  const empty = { files: new Map(), decisions: new Map(), owners: new Map(), visits: new Map(), payments: new Map() };
+  if (ids.length === 0) return empty as {
+    files: Map<number, FileRow[]>;
+    decisions: Map<number, DecisionRow[]>;
+    owners: Map<number, OwnerRow[]>;
+    visits: Map<number, VisitRow[]>;
+    payments: Map<number, PaymentRow[]>;
+  };
+  const inList = `(${ids.map(() => "?").join(",")})`;
+  const all = <T,>(sql: string) => db().prepare(sql).all(...ids) as unknown as T[];
+  return {
+    files: group(
+      all<FileRow>(
+        `SELECT f.*, u.name AS uploaded_by_name FROM files f JOIN users u ON u.id = f.uploaded_by
+         WHERE f.property_id IN ${inList} ORDER BY f.created_at, f.id`,
+      ),
+    ),
+    decisions: group(
+      all<DecisionRow>(
+        `SELECT d.*, u.name AS decided_by_name FROM decisions d JOIN users u ON u.id = d.decided_by
+         WHERE d.property_id IN ${inList} ORDER BY d.id`,
+      ),
+    ),
+    owners: group(all<OwnerRow>(`SELECT * FROM owners WHERE property_id IN ${inList} AND archived_at IS NULL ORDER BY id`)),
+    visits: group(
+      all<VisitRow>(
+        `SELECT v.*, u.name AS visited_by_name FROM ops_visits v LEFT JOIN users u ON u.id = v.visited_by
+         WHERE v.property_id IN ${inList}`,
+      ),
+    ),
+    payments: group(
+      all<PaymentRow>(
+        `SELECT p.*, r.name AS requested_by_name, x.name AS paid_by_name FROM payments p
+         LEFT JOIN users r ON r.id = p.requested_by LEFT JOIN users x ON x.id = p.paid_by
+         WHERE p.property_id IN ${inList} ORDER BY p.id`,
+      ),
+    ),
+  };
+}
+
+/** Builds what this viewer may see; hidden fields come back null and hidden sections are dropped. */
+function toView(viewer: User, row: PropertyRow, rel: ReturnType<typeof loadRelated>): PropertyView {
+  const role = viewer.role;
+  const fields = FIELD_VISIBILITY[role];
   const details = {} as Record<keyof PropertyDetails, unknown>;
-  for (const field of PROPERTY_FIELDS) {
-    details[field] = visibility.fields.has(field) ? row[COLUMN[field]] : null;
-  }
-  const stages = visibleDecisionStages(viewer.role);
+  for (const f of PROPERTY_FIELDS) details[f] = fields.has(f) ? row[COLUMN[f]] : null;
+  details.storeName = row.store_name;
+
+  const files = (rel.files.get(row.id) ?? [])
+    .filter((f) => canSeeFile(role, f.category))
+    .filter((f) => !f.archived_at || SEES_ARCHIVED.includes(role))
+    .map(toFile);
+  const visit = (rel.visits.get(row.id) ?? []).find((v) => v.round === row.round);
+
   return {
     ...(details as unknown as PropertyDetails),
     id: row.id,
     code: propertyCode(row.id),
-    status: row.status,
+    state: row.state,
+    stage: row.stage,
+    onHold: row.state === "on_hold",
     round: row.round,
+    furthestStage: row.furthest_stage >= 0 ? STAGES[row.furthest_stage] : null,
     createdBy: row.created_by,
     createdByName: row.created_by_name,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     submittedAt: row.submitted_at,
-    mediaVisible: visibility.media,
-    media: visibility.media ? media.map(toMedia) : [],
-    decisions: decisions.filter((d) => stages.includes(d.stage)).map(toDecision),
+    completedAt: row.completed_at,
+    loiSentAt: row.loi_sent_at,
+    loiSentTo: OWNER_VIEWERS.includes(role) ? row.loi_sent_to : null,
+    documentsCompletedAt: row.documents_completed_at,
+    files,
+    decisions: (rel.decisions.get(row.id) ?? []).map(toDecision),
+    owners: OWNER_VIEWERS.includes(role)
+      ? (rel.owners.get(row.id) ?? []).map((o) => toOwner(o, BANK_VIEWERS.includes(role)))
+      : null,
+    visit: VISIT_VIEWERS.includes(role)
+      ? {
+          visitedAt: visit?.visited_at ?? null,
+          visitedByName: visit?.visited_by_name ?? null,
+          scopeOfWork: visit?.scope_of_work ?? "",
+          updatedAt: visit?.updated_at ?? null,
+        }
+      : null,
+    payments: PAYMENT_VIEWERS.includes(role) ? (rel.payments.get(row.id) ?? []).map(toPayment) : null,
   };
 }
 
-function loadRelated(ids: number[]) {
-  const media = new Map<number, MediaRow[]>();
-  const decisions = new Map<number, DecisionRow[]>();
-  if (ids.length === 0) return { media, decisions };
-  const placeholders = ids.map(() => "?").join(",");
-  for (const m of db()
-    .prepare(`SELECT * FROM media WHERE property_id IN (${placeholders}) ORDER BY created_at, id`)
-    .all(...ids) as unknown as MediaRow[]) {
-    media.set(m.property_id, [...(media.get(m.property_id) ?? []), m]);
-  }
-  for (const d of db()
-    .prepare(
-      `SELECT d.*, u.name AS decided_by_name FROM decisions d JOIN users u ON u.id = d.decided_by
-       WHERE d.property_id IN (${placeholders}) ORDER BY d.round, d.id`,
-    )
-    .all(...ids) as unknown as DecisionRow[]) {
-    decisions.set(d.property_id, [...(decisions.get(d.property_id) ?? []), d]);
-  }
-  return { media, decisions };
-}
-
 function viewsFor(viewer: User, rows: PropertyRow[]): PropertyView[] {
-  const { media, decisions } = loadRelated(rows.map((r) => r.id));
-  return rows.map((r) => toView(viewer, r, media.get(r.id) ?? [], decisions.get(r.id) ?? []));
-}
-
-function rowById(id: number): PropertyRow | undefined {
-  return db().prepare(`${SELECT_PROPERTY} WHERE p.id = ?`).get(id) as PropertyRow | undefined;
+  const rel = loadRelated(rows.map((r) => r.id));
+  return rows.map((r) => toView(viewer, r, rel));
 }
 
 export function getProperty(viewer: User, id: number): PropertyView | null {
-  if (!Number.isInteger(id) || id <= 0) return null;
-  const access = accessCondition(viewer);
-  const row = db()
-    .prepare(`${SELECT_PROPERTY} WHERE p.id = ? AND (${access.sql})`)
-    .get(id, ...access.params) as PropertyRow | undefined;
-  return row ? viewsFor(viewer, [row])[0] : null;
+  const row = propertyRow(id);
+  return row && canAccess(viewer, row) ? viewsFor(viewer, [row])[0] : null;
 }
 
-export interface PropertyFilter {
-  /** Exact status, or "in_review" for any pending_* status. */
-  status?: PropertyStatus | "in_review" | "passed";
-  search?: string;
-}
+export type ListFilter =
+  | { kind: "all" }
+  | { kind: "state"; state: PropertyState }
+  | { kind: "stage"; stage: Stage };
 
-export function listProperties(viewer: User, filter: PropertyFilter = {}): PropertyView[] {
+export function listProperties(viewer: User, filter: ListFilter = { kind: "all" }, search = ""): PropertyView[] {
   const access = accessCondition(viewer);
   const where = [`(${access.sql})`];
   const params: (string | number)[] = [...access.params];
-  if (filter.status === "in_review") where.push("p.status LIKE 'pending_%'");
-  else if (filter.status === "passed") where.push("p.status LIKE 'passed_%'");
-  else if (filter.status) {
-    where.push("p.status = ?");
-    params.push(filter.status);
+  if (filter.kind === "state") {
+    where.push("p.state = ?");
+    params.push(filter.state);
+  } else if (filter.kind === "stage") {
+    where.push("p.stage = ? AND p.state IN ('active', 'on_hold')");
+    params.push(filter.stage);
   }
-  const search = filter.search?.trim();
-  if (search) {
-    const idMatch = search.match(/^(?:pr-?)?0*(\d+)$/i);
-    where.push("(p.title LIKE ? OR p.address LIKE ? OR u.name LIKE ? OR p.id = ?)");
-    const like = `%${search.replace(/[%_]/g, "")}%`;
+  const q = search.trim();
+  if (q) {
+    const idMatch = q.match(/^(?:pr-?)?0*(\d+)$/i);
+    const like = `%${q.replace(/[%_]/g, "")}%`;
+    where.push("(p.store_name LIKE ? OR p.address LIKE ? OR u.name LIKE ? OR p.id = ?)");
     params.push(like, like, like, idMatch ? Number(idMatch[1]) : -1);
   }
   const rows = db()
-    .prepare(`${SELECT_PROPERTY} WHERE ${where.join(" AND ")} ORDER BY COALESCE(p.submitted_at, p.updated_at) DESC, p.id DESC`)
+    .prepare(`${SELECT_PROPERTY} WHERE ${where.join(" AND ")} ORDER BY p.updated_at DESC, p.id DESC`)
     .all(...params) as unknown as PropertyRow[];
   return viewsFor(viewer, rows);
 }
 
-/** A reviewer's queue: waiting on their team vs already decided by it. */
-export function reviewQueue(viewer: User): { pending: PropertyView[]; reviewed: PropertyView[] } {
-  const stage = reviewerStage(viewer.role);
-  if (!stage) throw new PropertyError("Only review teams have a review queue.");
+/** Properties waiting on this viewer's team (and, for sales, not yet voted on by this person). */
+export function actionQueue(viewer: User): PropertyView[] {
+  const stages = stagesFor(viewer.role);
   const all = listProperties(viewer);
-  return {
-    pending: all.filter((p) => p.status === pendingStatus(stage)),
-    reviewed: all.filter((p) => p.status !== pendingStatus(stage)),
-  };
+  const waiting = all.filter((p) => p.stage && stages.includes(p.stage) && (p.state === "active" || p.state === "on_hold"));
+  if (viewer.role === "finance") {
+    const stamp = all.filter((p) => p.payments?.some((x) => x.kind === "stamp_duty" && x.status === "requested"));
+    return [...new Map([...waiting, ...stamp].map((p) => [p.id, p])).values()];
+  }
+  if (viewer.role === "sales") {
+    return waiting.filter((p) => !p.decisions.some((d) => d.round === p.round && d.stage === "sales_review" && d.decidedBy === viewer.id));
+  }
+  if (viewer.role === "real_estate") {
+    return all.filter((p) => p.state === "rejected" || p.state === "draft" || (p.stage === "documents" && p.state === "active"));
+  }
+  return waiting;
 }
 
-export function pendingCount(viewer: User): number {
-  const stage = reviewerStage(viewer.role);
-  if (!stage) return 0;
-  return (db().prepare("SELECT COUNT(*) AS n FROM properties WHERE status = ?").get(pendingStatus(stage)) as { n: number }).n;
+export function queueCount(viewer: User): number {
+  return actionQueue(viewer).length;
 }
 
 export interface DashboardStats {
   total: number;
-  drafts: number;
-  byStatus: Partial<Record<PropertyStatus, number>>;
-  approvedArea: number;
+  byState: Partial<Record<PropertyState, number>>;
+  byStage: Partial<Record<Stage, number>>;
+  completedArea: number;
+  paid: { token: number; balance: number; stamp_duty: number };
+  stampDutyRequested: number;
 }
 
 export function dashboardStats(): DashboardStats {
-  const rows = db().prepare("SELECT status, COUNT(*) AS n FROM properties GROUP BY status").all() as unknown as {
-    status: PropertyStatus;
+  const states = db().prepare("SELECT state, COUNT(*) AS n FROM properties GROUP BY state").all() as unknown as {
+    state: PropertyState;
     n: number;
   }[];
-  const byStatus = Object.fromEntries(rows.map((r) => [r.status, r.n])) as DashboardStats["byStatus"];
-  const area = db().prepare("SELECT COALESCE(SUM(area_sqft), 0) AS a FROM properties WHERE status = 'approved'").get() as {
-    a: number;
-  };
+  const stages = db()
+    .prepare("SELECT stage, COUNT(*) AS n FROM properties WHERE state IN ('active', 'on_hold') GROUP BY stage")
+    .all() as unknown as { stage: Stage; n: number }[];
+  const area = db().prepare("SELECT COALESCE(SUM(total_area_sqft), 0) AS a FROM properties WHERE state = 'completed'").get() as { a: number };
+  const paid = db()
+    .prepare("SELECT kind, COALESCE(SUM(amount), 0) AS total FROM payments WHERE status = 'paid' GROUP BY kind")
+    .all() as unknown as { kind: keyof DashboardStats["paid"]; total: number }[];
+  const stamp = db().prepare("SELECT COUNT(*) AS n FROM payments WHERE kind = 'stamp_duty' AND status = 'requested'").get() as { n: number };
   return {
-    total: rows.reduce((sum, r) => sum + r.n, 0),
-    drafts: byStatus.draft ?? 0,
-    byStatus,
-    approvedArea: area.a,
+    total: states.reduce((s, r) => s + r.n, 0),
+    byState: Object.fromEntries(states.map((r) => [r.state, r.n])),
+    byStage: Object.fromEntries(stages.map((r) => [r.stage, r.n])),
+    completedArea: area.a,
+    paid: { token: 0, balance: 0, stamp_duty: 0, ...Object.fromEntries(paid.map((r) => [r.kind, r.total])) },
+    stampDutyRequested: stamp.n,
   };
 }
 
-// --- Mutations by the real estate manager -----------------------------------
+// --- Real estate manager: create, edit, submit ---------------------------------
 
-function values(input: PropertyInput) {
+function values(i: PropertyInput) {
   return [
-    input.title,
-    input.address,
-    input.mapUrl,
-    input.latitude,
-    input.longitude,
-    input.ownerName,
-    input.areaSqft,
-    input.rentPerMonth,
-    input.securityDeposit,
-    input.advanceRent,
-    input.leaseTenureMonths,
-    input.rentEscalationPct,
-    input.rentFreeDays,
-    input.handoverDate,
-    input.lockInMonths,
-    input.notes,
+    i.storeName,
+    i.address,
+    i.mapUrl,
+    i.latitude,
+    i.longitude,
+    i.totalAreaSqft,
+    i.carpetAreaSqft,
+    i.askingRent,
+    i.securityDeposit,
+    i.advanceRent,
+    i.lockInMonths,
+    i.structureType,
+    i.structureHeightFt,
+    i.rentFreeDays,
+    i.handoverDate,
+    i.leaseTenureMonths,
+    i.rentEscalationPct,
+    i.notes,
   ];
 }
 
-function requireUploader(viewer: User) {
-  if (viewer.role !== "real_estate") throw new PropertyError("Only real estate managers can add or change properties.");
+export function requireRole(viewer: User, ...roles: Role[]) {
+  if (!roles.includes(viewer.role)) throw new PropertyError("Your role can't do that.");
 }
 
-/** Loads a property its uploader is about to change, checking ownership and that it isn't locked in review. */
-export function ownEditableProperty(viewer: User, id: number): PropertyRow {
-  requireUploader(viewer);
-  const row = rowById(id);
+/** The property, checked to belong to this real estate manager. */
+export function ownProperty(viewer: User, id: number): PropertyRow {
+  requireRole(viewer, "real_estate");
+  const row = propertyRow(id);
   if (!row || row.created_by !== viewer.id) throw new PropertyError("Property not found.");
-  if (!isEditable(row.status)) {
-    throw new PropertyError("This property is under review and can't be changed until a team passes it.");
-  }
+  return row;
+}
+
+export function ownEditableProperty(viewer: User, id: number): PropertyRow {
+  const row = ownProperty(viewer, id);
+  if (!isEditable(row.state)) throw new PropertyError("This property is in review and can't be edited unless it's rejected.");
   return row;
 }
 
 export function createProperty(viewer: User, input: PropertyInput): number {
-  requireUploader(viewer);
+  requireRole(viewer, "real_estate");
   return tx(() => {
     const at = now();
     const result = db()
       .prepare(
-        `INSERT INTO properties (status, title, address, map_url, latitude, longitude, owner_name, area_sqft,
-           rent_per_month, security_deposit, advance_rent, lease_tenure_months, rent_escalation_pct,
-           rent_free_days, handover_date, lock_in_months, notes, created_by, created_at, updated_at)
-         VALUES ('draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO properties (state, store_name, address, map_url, latitude, longitude, total_area_sqft,
+           carpet_area_sqft, asking_rent, security_deposit, advance_rent, lock_in_months, structure_type,
+           structure_height_ft, rent_free_days, handover_date, lease_tenure_months, rent_escalation_pct, notes,
+           created_by, created_at, updated_at)
+         VALUES ('draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(...values(input), viewer.id, at, at);
     const id = Number(result.lastInsertRowid);
@@ -341,10 +527,10 @@ export function updateProperty(viewer: User, id: number, input: PropertyInput) {
     ownEditableProperty(viewer, id);
     db()
       .prepare(
-        `UPDATE properties SET title = ?, address = ?, map_url = ?, latitude = ?, longitude = ?, owner_name = ?,
-           area_sqft = ?, rent_per_month = ?, security_deposit = ?, advance_rent = ?, lease_tenure_months = ?,
-           rent_escalation_pct = ?, rent_free_days = ?, handover_date = ?, lock_in_months = ?, notes = ?,
-           updated_at = ?
+        `UPDATE properties SET store_name = ?, address = ?, map_url = ?, latitude = ?, longitude = ?,
+           total_area_sqft = ?, carpet_area_sqft = ?, asking_rent = ?, security_deposit = ?, advance_rent = ?,
+           lock_in_months = ?, structure_type = ?, structure_height_ft = ?, rent_free_days = ?, handover_date = ?,
+           lease_tenure_months = ?, rent_escalation_pct = ?, notes = ?, updated_at = ?
          WHERE id = ?`,
       )
       .run(...values(input), now(), id);
@@ -352,137 +538,40 @@ export function updateProperty(viewer: User, id: number, input: PropertyInput) {
   });
 }
 
-/** Drafts that never entered review can be thrown away. Returns media ids so their files can be removed. */
-export function deleteDraft(viewer: User, id: number): string[] {
-  return tx(() => {
-    const row = ownEditableProperty(viewer, id);
-    if (row.status !== "draft") throw new PropertyError("Only drafts can be deleted.");
-    const media = db().prepare("SELECT id FROM media WHERE property_id = ?").all(id) as { id: string }[];
-    db().prepare("DELETE FROM properties WHERE id = ?").run(id);
-    return media.map((m) => m.id);
-  });
+/** Moves a property to a stage, keeping track of the furthest stage it has reached (which drives team access). */
+export function moveTo(id: number, stage: Stage, state: PropertyState) {
+  db()
+    .prepare(
+      `UPDATE properties SET stage = ?, state = ?, furthest_stage = MAX(furthest_stage, ?), updated_at = ?,
+         completed_at = CASE WHEN ? = 'completed' THEN ? ELSE completed_at END
+       WHERE id = ?`,
+    )
+    .run(stage, state, stageIndex(stage), now(), state, now(), id);
 }
 
-/** Sends a draft (or a passed property, after revisions) to sales for a new review round. */
+export function activeFiles(propertyId: number, category?: FileCategory): FileRow[] {
+  const sql = `SELECT f.*, u.name AS uploaded_by_name FROM files f JOIN users u ON u.id = f.uploaded_by
+     WHERE f.property_id = ? AND f.archived_at IS NULL ${category ? "AND f.category = ?" : ""} ORDER BY f.created_at`;
+  return db().prepare(sql).all(...(category ? [propertyId, category] : [propertyId])) as unknown as FileRow[];
+}
+
+/** Sends a draft, or a rejected property after revision, to the expansion manager. */
 export function submitProperty(viewer: User, id: number) {
   tx(() => {
     const row = ownEditableProperty(viewer, id);
-    const mediaCount = (db().prepare("SELECT COUNT(*) AS n FROM media WHERE property_id = ?").get(id) as { n: number }).n;
-    if (mediaCount === 0) throw new PropertyError("Add at least one photo or video before submitting.");
-
+    if (activeFiles(id, "property_media").length === 0) {
+      throw new PropertyError("Add at least one photo or video before submitting.");
+    }
     const resubmission = row.round > 0;
-    db()
-      .prepare("UPDATE properties SET status = ?, round = round + 1, submitted_at = ?, updated_at = ? WHERE id = ?")
-      .run(pendingStatus("sales"), now(), now(), id);
+    db().prepare("UPDATE properties SET round = round + 1, submitted_at = ? WHERE id = ?").run(now(), id);
+    moveTo(id, "em_review", "active");
     audit({ actorId: viewer.id, action: resubmission ? "property.resubmitted" : "property.submitted", propertyId: id });
-
-    const code = propertyCode(id);
-    notifyRole("sales", {
+    notifyRole("expansion_manager", {
       propertyId: id,
-      title: `${resubmission ? "Resubmitted" : "New"} property for review: ${code} ${row.title}`,
-      body: `${viewer.name} ${resubmission ? "revised and resubmitted" : "submitted"} ${row.title} (${formatNumber(row.area_sqft, " sq ft")}). Review the location and media and approve or pass it with remarks.`,
-      link: `${ROLE_INFO.sales.portal}/properties/${id}`,
+      title: `${resubmission ? "Resubmitted" : "New"} property: ${propertyCode(id)} ${row.store_name}`,
+      body: `${viewer.name} ${resubmission ? "revised and resubmitted" : "scouted"} ${row.store_name} (${formatNumber(row.total_area_sqft, " sq ft")}). Review it and approve or reject with remarks.`,
+      link: `/properties/${id}`,
     });
   });
 }
 
-// --- Review decisions -------------------------------------------------------
-
-export function decide(viewer: User, id: number, decision: Decision, remarksRaw: string) {
-  const stage = reviewerStage(viewer.role);
-  if (!stage) throw new PropertyError("Only review teams can approve or pass properties.");
-  if (decision !== "approved" && decision !== "passed") throw new PropertyError("Choose approve or pass.");
-  const remarks = remarksRaw.trim();
-  if (remarks.length < 3) throw new PropertyError("Remarks are required for both approve and pass.");
-  if (remarks.length > 5000) throw new PropertyError("Remarks must be at most 5000 characters.");
-
-  tx(() => {
-    const row = rowById(id);
-    if (!row || !getProperty(viewer, id)) throw new PropertyError("Property not found.");
-    if (pendingStage(row.status) !== stage) {
-      throw new PropertyError("This property is no longer waiting on your team — someone may have just reviewed it.");
-    }
-    const at = now();
-    db()
-      .prepare(
-        `INSERT INTO decisions (property_id, round, stage, decision, remarks, decided_by, decided_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(id, row.round, stage, decision, remarks, viewer.id, at);
-    const status = nextStatus(stage, decision);
-    const updated = db()
-      .prepare("UPDATE properties SET status = ?, updated_at = ? WHERE id = ? AND status = ?")
-      .run(status, at, id, row.status);
-    if (updated.changes !== 1) throw new PropertyError("This property changed while you were reviewing it. Reload and try again.");
-    audit({ actorId: viewer.id, action: `decision.${stage}.${decision}`, propertyId: id, details: remarks });
-
-    const code = propertyCode(id);
-    const team = STAGE_LABEL[stage];
-    const verb = DECISION_LABEL[decision].toLowerCase();
-    const finalApproval = status === "approved";
-
-    notifyUser(row.created_by, {
-      propertyId: id,
-      title: `${team} ${verb} ${code} ${row.title}`,
-      body: `${team} (${viewer.name}) ${verb} this property.${finalApproval ? " All three teams have now approved it." : ""}\n\nRemarks: ${remarks}`,
-      link: `${ROLE_INFO.real_estate.portal}/properties/${id}`,
-    });
-
-    const next = pendingStage(status);
-    if (next) {
-      const approvedBy = STAGES.slice(0, STAGES.indexOf(next))
-        .map((s) => STAGE_LABEL[s])
-        .join(" and ");
-      notifyRole(next, {
-        propertyId: id,
-        title: `Awaiting your review: ${code} ${row.title}`,
-        body: `${approvedBy} approved this property. It's now waiting on ${STAGE_LABEL[next]} to approve or pass it.`,
-        link: `${ROLE_INFO[next].portal}/properties/${id}`,
-      });
-    }
-  });
-}
-
-// --- Media ------------------------------------------------------------------
-
-export function mediaCount(propertyId: number): number {
-  return (db().prepare("SELECT COUNT(*) AS n FROM media WHERE property_id = ?").get(propertyId) as { n: number }).n;
-}
-
-export function insertMedia(
-  viewer: User,
-  propertyId: number,
-  media: { id: string; kind: "image" | "video"; mime: string; originalName: string; sizeBytes: number },
-) {
-  tx(() => {
-    ownEditableProperty(viewer, propertyId);
-    db()
-      .prepare(
-        `INSERT INTO media (id, property_id, kind, mime, original_name, size_bytes, uploaded_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(media.id, propertyId, media.kind, media.mime, media.originalName, media.sizeBytes, viewer.id, now());
-    db().prepare("UPDATE properties SET updated_at = ? WHERE id = ?").run(now(), propertyId);
-    audit({ actorId: viewer.id, action: "media.added", propertyId, details: media.originalName });
-  });
-}
-
-/** Removes a media record; returns its property id so the caller can delete the file. */
-export function deleteMedia(viewer: User, mediaId: string): number {
-  return tx(() => {
-    const m = db().prepare("SELECT * FROM media WHERE id = ?").get(mediaId) as MediaRow | undefined;
-    if (!m) throw new PropertyError("File not found.");
-    ownEditableProperty(viewer, m.property_id);
-    db().prepare("DELETE FROM media WHERE id = ?").run(mediaId);
-    audit({ actorId: viewer.id, action: "media.removed", propertyId: m.property_id, details: m.original_name });
-    return m.property_id;
-  });
-}
-
-/** The media record if this viewer may see it (has access to the property and their role may see media). */
-export function viewableMedia(viewer: User, mediaId: string): (MediaItem & { propertyId: number }) | null {
-  const m = db().prepare("SELECT * FROM media WHERE id = ?").get(mediaId) as MediaRow | undefined;
-  if (!m || !visibilityFor(viewer.role).media) return null;
-  if (!getProperty(viewer, m.property_id)) return null;
-  return { ...toMedia(m), propertyId: m.property_id };
-}

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { STATUS_LABEL, type PropertyStatus } from "@/lib/expansion/workflow";
+import { statusLabel, type PropertyState, type Stage } from "@/lib/expansion/workflow";
 
 export const inputClass =
   "w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:ring-zinc-800";
@@ -11,7 +11,8 @@ export const buttonClass = {
   primary: `${buttonBase} bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300`,
   secondary: `${buttonBase} border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800`,
   approve: `${buttonBase} bg-emerald-600 text-white hover:bg-emerald-700`,
-  pass: `${buttonBase} bg-rose-600 text-white hover:bg-rose-700`,
+  hold: `${buttonBase} bg-violet-600 text-white hover:bg-violet-700`,
+  reject: `${buttonBase} bg-rose-600 text-white hover:bg-rose-700`,
   danger: `${buttonBase} border border-rose-300 bg-white text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:bg-zinc-900 dark:text-rose-400 dark:hover:bg-rose-950`,
   link: "text-sm font-medium text-zinc-700 underline-offset-4 hover:underline dark:text-zinc-300",
 };
@@ -42,21 +43,18 @@ export function PageHeader({ title, subtitle, actions }: { title: ReactNode; sub
   );
 }
 
-const STATUS_TONE: Record<PropertyStatus, string> = {
+const STATE_TONE: Record<PropertyState, string> = {
   draft: "bg-zinc-100 text-zinc-700 ring-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700",
-  pending_sales: "bg-amber-50 text-amber-800 ring-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-800",
-  pending_ops: "bg-amber-50 text-amber-800 ring-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-800",
-  pending_business: "bg-amber-50 text-amber-800 ring-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-800",
-  approved: "bg-emerald-50 text-emerald-800 ring-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:ring-emerald-800",
-  passed_sales: "bg-rose-50 text-rose-800 ring-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:ring-rose-800",
-  passed_ops: "bg-rose-50 text-rose-800 ring-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:ring-rose-800",
-  passed_business: "bg-rose-50 text-rose-800 ring-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:ring-rose-800",
+  active: "bg-amber-50 text-amber-800 ring-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-800",
+  on_hold: "bg-violet-50 text-violet-800 ring-violet-300 dark:bg-violet-950 dark:text-violet-300 dark:ring-violet-800",
+  completed: "bg-emerald-50 text-emerald-800 ring-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:ring-emerald-800",
+  rejected: "bg-rose-50 text-rose-800 ring-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:ring-rose-800",
 };
 
-export function StatusBadge({ status }: { status: PropertyStatus }) {
+export function StatusBadge({ state, stage }: { state: PropertyState; stage: Stage | null }) {
   return (
-    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_TONE[status]}`}>
-      {STATUS_LABEL[status]}
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${STATE_TONE[state]}`}>
+      {statusLabel(state, stage)}
     </span>
   );
 }

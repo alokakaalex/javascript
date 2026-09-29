@@ -1,8 +1,10 @@
 // Shapes passed from the server data layer to pages and components. These
-// never carry secrets (password hashes, tokens).
+// never carry secrets (password hashes, tokens) and only carry what the
+// viewer's role may see.
 
+import type { StructureType } from "./propertyInput";
 import type { Role } from "./roles";
-import type { Decision, PropertyStatus, Stage } from "./workflow";
+import type { Decision, FileCategory, PropertyState, Stage } from "./workflow";
 
 export type UserStatus = "invited" | "active" | "disabled";
 
@@ -16,16 +18,25 @@ export interface User {
   createdAt: string;
 }
 
-export interface MediaItem {
+export interface StoredFile {
   id: string;
-  kind: "image" | "video";
+  category: FileCategory;
+  ownerId: number | null;
+  /** Receipts and calculations attached to a payment record. */
+  paymentId: number | null;
+  kind: "image" | "video" | "pdf" | "doc";
   mime: string;
   originalName: string;
   sizeBytes: number;
+  sha256: string;
+  uploadedByName: string;
   createdAt: string;
+  /** Replaced or removed; kept for the record, only admins/EM/founder see these. */
+  archivedAt: string | null;
 }
 
 export interface DecisionRecord {
+  id: number;
   round: number;
   stage: Stage;
   decision: Decision;
@@ -35,41 +46,91 @@ export interface DecisionRecord {
   decidedAt: string;
 }
 
-/** All commercial fields. Reviewers get a copy with non-visible fields set to null. */
+/** Property fields; any the viewer's role may not see are null. */
 export interface PropertyDetails {
-  title: string;
-  address: string;
+  storeName: string;
+  address: string | null;
   mapUrl: string | null;
   latitude: number | null;
   longitude: number | null;
-  ownerName: string | null;
-  areaSqft: number | null;
-  rentPerMonth: number | null;
+  totalAreaSqft: number | null;
+  carpetAreaSqft: number | null;
+  askingRent: number | null;
   securityDeposit: number | null;
   advanceRent: number | null;
-  leaseTenureMonths: number | null;
-  rentEscalationPct: number | null;
+  lockInMonths: number | null;
+  structureType: StructureType | null;
+  structureHeightFt: number | null;
   rentFreeDays: number | null;
   handoverDate: string | null;
-  lockInMonths: number | null;
+  leaseTenureMonths: number | null;
+  rentEscalationPct: number | null;
+  notes: string | null;
+}
+
+export interface Owner {
+  id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  isOrganisation: boolean;
+  gstNumber: string | null;
+  panNumber: string | null;
+  /** Present only for roles that may see bank details. */
+  bank: { accountName: string; accountNumber: string; ifsc: string; bankName: string } | null;
+  hasBankDetails: boolean;
+}
+
+export interface OpsVisit {
+  visitedAt: string | null;
+  visitedByName: string | null;
+  scopeOfWork: string;
+  updatedAt: string | null;
+}
+
+export type PaymentKind = "token" | "balance" | "stamp_duty";
+
+export interface Payment {
+  id: number;
+  kind: PaymentKind;
+  status: "requested" | "paid";
+  /** Stamp duty only: what the expansion manager asked for. */
+  requestedAmount: number | null;
+  requestedByName: string | null;
+  requestedAt: string | null;
+  requestRemarks: string | null;
+  amount: number | null;
+  utr: string | null;
+  paidOn: string | null;
+  paidByName: string | null;
+  paidAt: string | null;
   notes: string | null;
 }
 
 export interface PropertyView extends PropertyDetails {
   id: number;
   code: string;
-  status: PropertyStatus;
+  state: PropertyState;
+  stage: Stage | null;
+  onHold: boolean;
   round: number;
+  furthestStage: Stage | null;
   createdBy: string;
   createdByName: string;
   createdAt: string;
   updatedAt: string;
   submittedAt: string | null;
-  /** Empty when the viewer's role may not see media. */
-  media: MediaItem[];
-  mediaVisible: boolean;
-  /** Decisions the viewer may see, oldest first, across all rounds. */
+  completedAt: string | null;
+  loiSentAt: string | null;
+  loiSentTo: string | null;
+  documentsCompletedAt: string | null;
+  /** Files the viewer may see. */
+  files: StoredFile[];
+  /** Every decision, oldest first, across all rounds. */
   decisions: DecisionRecord[];
+  owners: Owner[] | null;
+  visit: OpsVisit | null;
+  payments: Payment[] | null;
 }
 
 export interface Notification {

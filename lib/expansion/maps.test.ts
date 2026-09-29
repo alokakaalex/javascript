@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchesSignature } from "@/lib/server/mediaStore";
+import { matchesSignature } from "@/lib/server/files";
 import { mapOpenUrl, parseCoordinates, safeHttpUrl } from "./maps";
 
 describe("parseCoordinates", () => {
@@ -36,5 +36,7 @@ describe("upload signatures", () => {
     expect(matchesSignature("video/mp4", bytes(0, 0, 0, 0x18, "ftypmp42"))).toBe(true);
     expect(matchesSignature("image/png", bytes("<html><script>"))).toBe(false);
     expect(matchesSignature("image/svg+xml", bytes("<svg"))).toBe(false);
+    expect(matchesSignature("application/pdf", bytes("%PDF-1.4"))).toBe(true);
+    expect(matchesSignature("application/pdf", bytes("<html>"))).toBe(false);
   });
 });

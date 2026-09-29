@@ -11,7 +11,7 @@ export default async function NewPropertyPage() {
     <>
       <PageHeader
         title="Upload property"
-        subtitle="Step 1 of 2: property details. You'll add photos and videos next, then submit to Sales & Category."
+        subtitle="Step 1 of 2: property details. You'll add photos and videos next, then submit to the Expansion Manager."
       />
       <Card>
         <PropertyForm />

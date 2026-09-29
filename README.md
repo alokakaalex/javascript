@@ -1,123 +1,156 @@
 # Expansion Portal
 
-A role-based web app for the expansion project. Real estate managers upload
-candidate properties; Sales & Category, Ops and Business Leaders review them
-in turn, each seeing only the details they need; and an access manager
-controls who holds which role and sees every property end to end. The
-warehouse electrical asset calculator lives at `/calculator` in the same
-app.
+An in-house platform that runs the expansion pipeline end to end: a real
+estate manager scouts a property, it's approved by the Expansion Manager,
+Business Leaders, Sales and Ops, the owner's documents and the LOI are
+collected, the Founder gives final approval, and Finance releases the
+token, the balance and any stamp duty — with every document, decision and
+payment stored permanently and visible to the right people. The warehouse
+electrical asset calculator lives at `/calculator` in the same app.
 
-## Roles
+## The pipeline
 
-| Role | Portal | What they do | What they see of a property |
-|---|---|---|---|
-| **Access Manager** (admin) | `/admin` | Adds people by email, assigns and changes roles, disables access, issues password-reset links. Dashboard of all properties, CSV export. | Everything: all fields, all photos/videos, every team's decision and remarks, full activity log. |
-| **Real Estate Manager** | `/real-estate` | Uploads properties and media, submits them for review, revises and resubmits passed ones. | Everything about their own uploads, plus every decision. |
-| **Sales & Category** | `/sales` | First review: approve or pass, with remarks. | Photos/videos, Google Maps location, area (sq ft). |
-| **Ops Leader** | `/ops` | Second review, only after Sales approves. | Area, location, advance rent, security deposit, rent-free days, and Sales' decision. No media. |
-| **Business Leader** | `/business` | Final review, only after Sales and Ops approve. | Location, area, rent/month, security deposit, advance rent, rent-free days, photos/videos, and Sales' and Ops' decisions. |
+| # | Stage | Who acts | What happens | Who is notified |
+|---|---|---|---|---|
+| 1 | Expansion Manager review | Expansion Manager | Approve or reject, with remarks | Real estate manager; on approval, Business Leaders |
+| 2 | Business Leaders review | Business Leaders | Approve, hold or reject, with remarks | Expansion Manager and real estate manager; on approval, the whole Sales team |
+| 3 | Sales review | Every Sales team member | Each member votes approve/reject with remarks; the stage resolves when enough agree (setting, default 1) | Real estate manager on every vote; Expansion Manager when it resolves; on approval, Ops |
+| 4 | Ops site visit | Ops | Upload site photos/videos, mark visited, write the scope of work, approve or reject | Real estate manager and Expansion Manager |
+| 5 | Owner & property documents | Real estate manager | Owners (one or more) with Aadhaar front/back, PAN, contact and bank details; electricity bill, lease deed / registered document / power of attorney, property tax receipt, GST (if an organisation), and optional water bill, rent agreement, tenant NOC, other | Expansion Manager |
+| 6 | LOI issued | Expansion Manager | Upload the LOI; it's emailed to every owner with an email address | Real estate manager (to get it signed) |
+| 7 | Signed LOI | Expansion Manager | Upload the signed LOI | Founder |
+| 8 | Founder approval | Founder | Approve, hold or reject, seeing everything | Expansion Manager and real estate manager; on approval, Finance |
+| 9 | Token released | Finance | Upload the UTR receipt, enter amount/UTR/date, mark paid | Expansion Manager and Founder |
+| 10 | Signed agreement | Expansion Manager | Upload the agreement (notarised / ₹100 stamp paper, signed with the Founder) | Finance, Founder |
+| 11 | Balance released | Finance | Sees the agreement, landlord bank details and the token payment; pays the remainder, marks paid with UTR and receipt | Expansion Manager and Founder |
+| — | Stamp duty (optional) | Expansion Manager → Finance | Any time after the Founder approves: request stamp duty with the calculation PDF; Finance pays and marks paid with UTR | Finance and Founder; then Expansion Manager and Founder |
 
-Each person holds one role and is sent to that role's portal when they sign
-in. Visibility is enforced on the server (`lib/expansion/workflow.ts` →
-`STAGE_VISIBILITY`): hidden fields are never sent to the browser, and
-`/api/media/:id` refuses photos/videos to roles that may not see them. To
-change what a team sees, edit that table.
+- **Remarks are required** for every approve, hold and reject, and every
+  decision is recorded with the person's name and time.
+- **Hold** keeps the property with that team until they approve or reject.
+- **Rejected** properties go back to the real estate manager, who can revise
+  and resubmit; that starts a new round at stage 1, and earlier rounds stay
+  in the history.
+- Actions are checked on the server against the property's current stage,
+  so two people can't both move the same property.
 
-## The approval flow
+## Roles and what they see
 
-1. **Real estate manager uploads** the property: name, owner name, address,
-   Google Maps link (or coordinates), area, rent/month, security deposit,
-   advance rent, lease tenure, rent escalation % per year, rent-free days,
-   handover date, lock-in period, notes — then photos and videos (drag and
-   drop, with upload progress). It's saved as a draft until they submit.
-2. **Submit** → every Sales & Category member is notified.
-3. **Sales approves or passes** (remarks required either way) → the real
-   estate manager is notified. On approval, every Ops leader is notified.
-4. **Ops approves or passes** → the real estate manager is notified. On
-   approval, every Business Leader is notified that Sales and Ops approved.
-5. **Business approves or passes** → the real estate manager is notified.
-   Approved here means approved by all three teams.
-6. A **pass** at any stage stops the property. The real estate manager can
-   revise it and **resubmit**, which starts a new review round at Sales;
-   earlier rounds' decisions stay in the history.
+| Role | Portal | Sees |
+|---|---|---|
+| Access Manager (admin) | `/admin` | Everything; manages people, roles, backups and settings |
+| Expansion Manager | `/expansion` | Complete dashboard: every property, all details, media, documents, decisions and payments |
+| Real Estate Manager | `/real-estate` | Everything about their own properties (payment status but not Finance's receipts) |
+| Business Leader | `/business` | Store name, total/carpet area, asking rent, security deposit, rent-free period, advance rent, and decisions |
+| Sales Team | `/sales` | All property details, location and photos/videos (not owner documents) |
+| Ops Team | `/ops` | All property details and media, plus the site visit they record |
+| Founder | `/founder` | Everything, including KYC documents and payments |
+| Finance | `/finance` | Store name, address, area, advance rent, security deposit, decisions, signed LOI, agreement, owner names and bank details, payments and receipts (not Aadhaar/PAN or property documents) |
 
-A property is locked while it's in review. The first person on a team to
-decide records the decision for that team; if two people act at once, the
-second is told it's already been decided. Notifications appear in-app (bell
-in the header) and, if SMTP is configured, by email.
+These rules live in `lib/expansion/workflow.ts` (`FIELD_VISIBILITY`,
+`CATEGORY_INFO`, `ACCESS_FROM`) and are enforced on the server: hidden fields
+are never sent to the browser, and `/api/files/:id` refuses a file to any
+role not allowed to see that document type. Each team only sees a property
+once it has reached them.
+
+## How data is kept safe ("never lose it")
+
+1. **Nothing is deleted.** The database itself refuses to delete properties,
+   owners, files, decisions, payments, users or audit entries (SQLite
+   triggers), and decisions and audit entries can't be edited. Removing or
+   replacing a document *archives* it: it disappears from normal views but
+   stays in storage and is listed under "Archived files" for the access
+   manager, Expansion Manager and Founder.
+2. **Every file is fingerprinted.** Each upload's SHA-256 is recorded;
+   *Backups & settings → Verify all files* re-reads every file and checks it.
+   Uploads are also checked to really be the type they claim (PDF, image,
+   video, .docx).
+3. **Off-site copy of every file.** With an S3-compatible bucket configured
+   (AWS S3, Cloudflare R2, Backblaze B2, Wasabi, MinIO…), every file is copied
+   there as it's uploaded. If the server's copy is ever lost, it's restored
+   from the bucket automatically the next time someone opens it. Failed
+   copies are retried with every backup.
+4. **Automatic database backups** every `BACKUP_INTERVAL_HOURS` (default 6)
+   to `BACKUP_DIR` and the bucket. The last `BACKUP_KEEP` (default 60) are
+   kept locally; the app never deletes bucket copies.
+5. **Audit log** of every action, shown on each property and on Access &
+   roles.
+
+For the strongest protection, turn on **versioning** (and ideally object
+lock) on the bucket, so even a mistaken overwrite can be undone, and keep
+the bucket in a different account/region from the server.
+
+**Restoring the database** from a backup: stop the app, copy the backup
+file (from `BACKUP_DIR` or the bucket's `backups/` folder) to
+`DATA_DIR/expansion.db`, delete `expansion.db-wal` and `expansion.db-shm`
+if present, and start the app. Uploaded files are restored from the bucket
+on demand.
 
 ## Access management
 
-- **Adding someone**: Access & roles → enter email, name, role → *Add & create
-  invite*. This creates a one-time link (valid 7 days) that is emailed to
-  them if SMTP is set up, and always shown to you to copy and share. They
-  open it, choose a password, and land on their portal.
-- **Changing a role** takes effect on their next page load.
-- **Disabling** someone signs them out everywhere immediately.
-- **Forgotten password**: *Reset password link* issues a new one-time link.
-- You can't change your own role or disable yourself, and there must always
-  be at least one active access manager.
-- Five wrong passwords lock an account for 15 minutes.
-- Every access change and every property action is recorded in an audit log
-  (shown on Access & roles and on each property's admin page).
+- **Adding someone**: Access & roles → email, name, role → *Add & create
+  invite*. A one-time link (valid 7 days) is emailed if SMTP is set up and
+  always shown to copy. They choose a password and land on their portal.
+- **Changing a role** takes effect on their next page load; **disabling**
+  signs them out everywhere immediately; **reset password link** issues a
+  new one-time link.
+- You can't change your own role or disable yourself, and there's always at
+  least one active access manager. Five wrong passwords lock an account for
+  15 minutes.
 
 ## Setup
 
-Requires Node.js 22.13+ (it uses Node's built-in SQLite driver, so there's no
-separate database server to run).
+Requires Node.js 22.13+ (it uses Node's built-in SQLite driver, so there's
+no separate database server).
 
 ```bash
 npm install
-cp .env.example .env.local   # then edit: ADMIN_EMAIL, ADMIN_INITIAL_PASSWORD, APP_URL
+cp .env.example .env.local   # set ADMIN_EMAIL, ADMIN_INITIAL_PASSWORD, APP_URL, and S3_* for off-site copies
 npm run dev                  # http://localhost:3000
 ```
 
-On first start, the access manager account from `ADMIN_EMAIL` /
-`ADMIN_INITIAL_PASSWORD` is created. Sign in with it, change the password
-under **Account**, then add your team under **Access & roles**.
+On first start the access manager from `ADMIN_EMAIL` /
+`ADMIN_INITIAL_PASSWORD` is created. Sign in, change the password under
+**Account**, then add your team under **Access & roles**.
 
 | Variable | Purpose |
 |---|---|
-| `APP_URL` | Public URL, used in invite links and emails. |
-| `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_INITIAL_PASSWORD` | First access manager (created once). |
-| `DATA_DIR` | Where the database (`expansion.db`) and uploads live. Default `./data`. |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Optional email delivery. Without it, everything works in-app and you share invite links by hand. |
-| `MAX_IMAGE_MB` (25), `MAX_VIDEO_MB` (500), `MAX_MEDIA_PER_PROPERTY` (40) | Upload limits. |
-| `SESSION_DAYS` (7), `INVITE_DAYS` (7) | How long sign-ins and invite links last. |
+| `APP_URL` | Public URL, used in invite links and emails |
+| `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_INITIAL_PASSWORD` | First access manager (created once) |
+| `DATA_DIR` | Database and uploaded files (default `./data`) |
+| `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PREFIX`, `S3_FORCE_PATH_STYLE` | Off-site copy of every file and backup (strongly recommended) |
+| `BACKUP_DIR`, `BACKUP_INTERVAL_HOURS` (6), `BACKUP_KEEP` (60) | Database backups; point `BACKUP_DIR` at a second disk if you have one |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Email for invites, notifications and sending the LOI to landowners. Without it everything works in-app, and LOIs are downloaded and sent by hand |
+| `MAX_IMAGE_MB` (25), `MAX_VIDEO_MB` (500), `MAX_DOCUMENT_MB` (25), `MAX_FILES_PER_PROPERTY` (300) | Upload limits |
+| `SESSION_DAYS` (7), `INVITE_DAYS` (7) | Sign-in and invite link lifetimes |
 
-Node prints an `ExperimentalWarning` for SQLite at startup; it's harmless.
-Set `NODE_OPTIONS=--disable-warning=ExperimentalWarning` to silence it.
+Node prints an `ExperimentalWarning` for SQLite at startup; it's harmless
+(`NODE_OPTIONS=--disable-warning=ExperimentalWarning` silences it).
 
 ### Deploying
 
-Run it as a normal long-lived Node server (`npm run build && npm start`) on a
-VM, container or platform with a **persistent disk** mounted at `DATA_DIR`
-(e.g. a Docker volume, Railway/Render disk, EC2/EBS). It won't keep data on
-serverless hosts like Vercel, which have no persistent filesystem. Put it
-behind HTTPS (session cookies are `Secure` in production), and **back up
-`DATA_DIR`** regularly: it holds the database and every uploaded file.
-
-Photos and videos are stored on that disk and only served through the
-authenticated `/api/media` route. For many users or very large volumes of
-video, the next step is moving the database to Postgres and media to S3 (or
-similar). All data access goes through `lib/server/`, so that change stays
-inside that folder.
+Run it as a long-lived Node server (`npm run build && npm start`) on a VM
+or container with a **persistent disk** mounted at `DATA_DIR`, behind HTTPS.
+Serverless hosts like Vercel have no persistent disk and won't work. Configure
+the S3 bucket so the data survives even if that server is lost.
 
 ## Code layout
 
-- `lib/expansion/` — pure logic shared by server and UI: roles, the
-  workflow state machine and visibility rules, form validation, Google Maps
-  parsing, formatting.
-- `lib/server/` — server-only data layer: SQLite schema and migrations
-  (`db.ts`), users/invites/sign-in (`users.ts`), sessions (`session.ts`),
-  properties and decisions (`properties.ts`), notifications, email, media
-  storage, audit log.
-- `app/(portal)/` — the role portals; `app/actions/` — server actions;
-  `app/api/` — media upload/download and CSV export.
-- `components/portal/` — portal UI.
+- `lib/expansion/` — pure rules shared by server and UI: roles, the
+  pipeline and visibility tables (`workflow.ts`), form validation, maps,
+  formatting.
+- `lib/server/` — server-only data layer: schema and migrations (`db.ts`),
+  property access and views (`properties.ts`), every pipeline step
+  (`pipeline.ts`), uploads (`files.ts`), local + S3 storage
+  (`blobStore.ts`), backups, users, sessions, notifications, email, audit,
+  settings.
+- `app/(portal)/` — role portals and the shared property page
+  (`/properties/[id]`), which shows each role its sections and actions;
+  `app/actions/` — server actions; `app/api/` — file upload/download, CSV
+  export; `instrumentation.ts` starts the backup scheduler.
 
 ```bash
-npm test         # unit + integration tests (workflow, visibility, access control, calculator)
+npm test         # pipeline, visibility, archiving, backups, access control, calculator
 npm run lint
 npm run build
 ```

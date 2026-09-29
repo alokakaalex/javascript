@@ -1,8 +1,8 @@
 "use client";
 
 import { startTransition, useActionState } from "react";
-import { saveProperty, type PropertyFormState } from "@/app/actions/properties";
-import type { PropertyInput } from "@/lib/expansion/propertyInput";
+import { saveProperty, type ActionState } from "@/app/actions/pipeline";
+import { STRUCTURE_LABEL, STRUCTURE_TYPES, type PropertyInput } from "@/lib/expansion/propertyInput";
 import type { PropertyView } from "@/lib/expansion/types";
 import { Alert, buttonClass, inputClass } from "./ui";
 
@@ -50,8 +50,8 @@ function initial(property: PropertyView | undefined, name: Name): string {
 }
 
 export default function PropertyForm({ property }: { property?: PropertyView }) {
-  const [state, action, pending] = useActionState<PropertyFormState, FormData>(saveProperty, {});
-  const errors = state.fieldErrors ?? {};
+  const [state, action, pending] = useActionState<ActionState, FormData>(saveProperty, {});
+  const errors = (state.fieldErrors ?? {}) as Partial<Record<Name, string>>;
 
   const input = (name: Name, props: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
     <input
@@ -85,36 +85,61 @@ export default function PropertyForm({ property }: { property?: PropertyView }) 
 
       <fieldset className="grid gap-4 sm:grid-cols-2">
         <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Property &amp; location</legend>
-        <Field name="title" label="Property name" hint="e.g. Rohini Sec-7 warehouse" error={errors.title}>
-          {input("title", { maxLength: 150 })}
+        <Field name="storeName" label="Store / property name" hint="e.g. Rohini Sec-7 Dark Store" error={errors.storeName}>
+          {input("storeName", { maxLength: 150 })}
         </Field>
-        <Field name="ownerName" label="Property owner name" error={errors.ownerName}>
-          {input("ownerName", { maxLength: 150 })}
+        <Field name="handoverDate" label="Handover date" error={errors.handoverDate}>
+          {input("handoverDate", { type: "date" })}
         </Field>
         <Field name="address" label="Address" error={errors.address} className="sm:col-span-2">
           {input("address", { maxLength: 500 })}
         </Field>
         <Field
           name="mapUrl"
-          label="Google Maps location"
+          label="Google Maps link"
           hint="Paste the Google Maps share link, or coordinates like 28.7041, 77.1025."
           error={errors.mapUrl}
           className="sm:col-span-2"
         >
           {input("mapUrl", { maxLength: 2000, placeholder: "https://maps.app.goo.gl/…" })}
         </Field>
-        <Field name="areaSqft" label="Area (sq ft)" error={errors.areaSqft}>
-          {input("areaSqft", { ...amount, min: 1 })}
+      </fieldset>
+
+      <fieldset className="grid gap-4 sm:grid-cols-4">
+        <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Area &amp; structure</legend>
+        <Field name="totalAreaSqft" label="Total area (sq ft)" error={errors.totalAreaSqft}>
+          {input("totalAreaSqft", { ...amount, min: 1 })}
         </Field>
-        <Field name="handoverDate" label="Handover date" error={errors.handoverDate}>
-          {input("handoverDate", { type: "date" })}
+        <Field name="carpetAreaSqft" label="Carpet area (sq ft)" error={errors.carpetAreaSqft}>
+          {input("carpetAreaSqft", { ...amount, min: 1 })}
+        </Field>
+        <Field name="structureType" label="Type of structure" error={errors.structureType}>
+          <select
+            id="structureType"
+            name="structureType"
+            required
+            defaultValue={initial(property, "structureType")}
+            className={`${inputClass} ${errors.structureType ? "border-rose-400" : ""}`}
+          >
+            <option value="" disabled>
+              Choose…
+            </option>
+            {STRUCTURE_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {STRUCTURE_LABEL[t]}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field name="structureHeightFt" label="Height (ft)" error={errors.structureHeightFt}>
+          {input("structureHeightFt", { ...amount, min: 1 })}
         </Field>
       </fieldset>
 
       <fieldset className="grid gap-4 sm:grid-cols-3">
-        <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Commercials (₹)</legend>
-        <Field name="rentPerMonth" label="Rent per month (₹)" error={errors.rentPerMonth}>
-          {input("rentPerMonth", { ...amount, min: 1 })}
+        <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Commercials</legend>
+        <Field name="askingRent" label="Asking rent per month (₹)" error={errors.askingRent}>
+          {input("askingRent", { ...amount, min: 1 })}
         </Field>
         <Field name="securityDeposit" label="Security deposit (₹)" error={errors.securityDeposit}>
           {input("securityDeposit", amount)}
@@ -122,25 +147,21 @@ export default function PropertyForm({ property }: { property?: PropertyView }) 
         <Field name="advanceRent" label="Advance rent (₹)" error={errors.advanceRent}>
           {input("advanceRent", amount)}
         </Field>
-        <Field name="rentEscalationPct" label="Rent escalation (% per year)" error={errors.rentEscalationPct}>
-          {input("rentEscalationPct", { ...amount, max: 100 })}
-        </Field>
-        <Field name="rentFreeDays" label="Rent-free days" error={errors.rentFreeDays}>
+        <Field name="rentFreeDays" label="Rent-free period (days)" error={errors.rentFreeDays}>
           {input("rentFreeDays", whole)}
-        </Field>
-      </fieldset>
-
-      <fieldset className="grid gap-4 sm:grid-cols-3">
-        <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Lease terms</legend>
-        <Field name="leaseTenureMonths" label="Lease tenure (months)" hint="e.g. 108 for 9 years" error={errors.leaseTenureMonths}>
-          {input("leaseTenureMonths", { ...whole, min: 1 })}
         </Field>
         <Field name="lockInMonths" label="Lock-in period (months)" error={errors.lockInMonths}>
           {input("lockInMonths", whole)}
         </Field>
+        <Field name="leaseTenureMonths" label="Lease tenure (months, optional)" hint="e.g. 108 for 9 years" error={errors.leaseTenureMonths}>
+          {input("leaseTenureMonths", { ...whole, min: 1, required: false })}
+        </Field>
+        <Field name="rentEscalationPct" label="Rent escalation (% per year, optional)" error={errors.rentEscalationPct}>
+          {input("rentEscalationPct", { ...amount, max: 100, required: false })}
+        </Field>
       </fieldset>
 
-      <Field name="notes" label="Other details (optional)" hint="Only you and the access manager see these notes." error={errors.notes}>
+      <Field name="notes" label="Other details (optional)" hint="Visible to the Expansion Manager, Sales, Ops and the Founder." error={errors.notes}>
         <textarea
           id="notes"
           name="notes"

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
-import { ReviewQueuePage } from "@/components/portal/ReviewPages";
+import TeamHome from "@/components/portal/TeamHome";
+import { requireRole } from "@/lib/server/session";
 
-export const metadata: Metadata = { title: "Review queue" };
+export const metadata: Metadata = { title: "Sales review" };
 
-export default function Page() {
-  return <ReviewQueuePage stage="sales" />;
+export default async function Page() {
+  const user = await requireRole("sales");
+  return <TeamHome user={user} title="Sales review" waitingLabel="Awaiting your decision" />;
 }

@@ -6,14 +6,14 @@ export default function MapEmbed({ property }: { property: PropertyView }) {
     property.latitude != null && property.longitude != null
       ? { latitude: property.latitude, longitude: property.longitude }
       : null;
-  const embed = mapEmbedUrl(property.address, coords);
-  const open = mapOpenUrl(property.mapUrl, property.address, coords);
+  const embed = mapEmbedUrl(property.address ?? "", coords);
+  const open = mapOpenUrl(property.mapUrl, property.address ?? "", coords);
   return (
     <div className="space-y-2">
       <p className="text-sm text-zinc-700 dark:text-zinc-300">{property.address}</p>
       {embed ? (
         <iframe
-          title={`Map of ${property.title}`}
+          title={`Map of ${property.storeName}`}
           src={embed}
           className="h-72 w-full rounded-md border border-zinc-200 dark:border-zinc-800"
           loading="lazy"

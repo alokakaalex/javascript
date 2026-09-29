@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { isRole } from "@/lib/expansion/roles";
 import { requireRole } from "@/lib/server/session";
+import { runBackup } from "@/lib/server/backups";
+import { verifyFiles } from "@/lib/server/files";
+import { updateSettings } from "@/lib/server/settings";
 import { changeRole, inviteUser, issueAccessLink, setUserEnabled, UserError } from "@/lib/server/users";
 
 export interface AdminFormState {
@@ -54,4 +57,36 @@ export async function updateUser(_: AdminFormState, formData: FormData): Promise
     }
     return {};
   });
+}
+
+export interface SystemState {
+  error?: string;
+  success?: string;
+}
+
+export async function saveSettings(_: SystemState, formData: FormData): Promise<SystemState> {
+  const actor = await requireRole("admin");
+  const approvals = Number(field(formData, "salesApprovalsRequired"));
+  const rejections = Number(field(formData, "salesRejectionsRequired"));
+  if (![approvals, rejections].every((n) => Number.isInteger(n) && n >= 1 && n <= 50)) {
+    return { error: "Enter whole numbers between 1 and 50." };
+  }
+  updateSettings(actor, { salesApprovalsRequired: approvals, salesRejectionsRequired: rejections });
+  revalidatePath("/admin/system");
+  return { success: "Settings saved." };
+}
+
+export async function backupNow(): Promise<SystemState> {
+  await requireRole("admin");
+  const b = await runBackup("manual");
+  revalidatePath("/admin/system");
+  return b.error ? { error: b.error } : { success: `Backup ${b.fileName} saved${b.remoteCopy ? " and copied to the bucket" : ""}.` };
+}
+
+export async function verifyStorage(): Promise<SystemState> {
+  await requireRole("admin");
+  const r = await verifyFiles();
+  return r.problems.length
+    ? { error: `${r.problems.length} of ${r.checked} files have problems: ${r.problems.slice(0, 10).join("; ")}` }
+    : { success: `All ${r.checked} files are present and unchanged (SHA-256 verified).` };
 }

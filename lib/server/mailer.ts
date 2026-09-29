@@ -16,6 +16,7 @@ export interface Email {
   to: string;
   subject: string;
   text: string;
+  attachments?: { filename: string; path: string; contentType?: string }[];
 }
 
 /** Fire-and-forget: a mail outage must never fail the action that triggered it. */
@@ -29,6 +30,6 @@ export function sendEmail(email: Email): void {
     auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : undefined,
   });
   transport
-    .sendMail({ from: smtp.from, to: email.to, subject: email.subject, text: email.text })
+    .sendMail({ from: smtp.from, to: email.to, subject: email.subject, text: email.text, attachments: email.attachments })
     .catch((error: unknown) => console.error(`[mailer] failed to send "${email.subject}" to ${email.to}`, error));
 }

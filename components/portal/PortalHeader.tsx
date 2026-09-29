@@ -3,24 +3,26 @@ import { logout } from "@/app/actions/auth";
 import { ROLE_INFO } from "@/lib/expansion/roles";
 import type { User } from "@/lib/expansion/types";
 import { unreadCount } from "@/lib/server/notifications";
-import { pendingCount } from "@/lib/server/properties";
+import { queueCount } from "@/lib/server/properties";
 
 function navFor(user: User): { href: string; label: string; badge?: number }[] {
+  const home = { href: ROLE_INFO[user.role].portal, label: "Home", badge: queueCount(user) };
   switch (user.role) {
     case "admin":
       return [
         { href: "/admin", label: "Dashboard" },
         { href: "/admin/users", label: "Access & roles" },
+        { href: "/admin/system", label: "Backups & settings" },
         { href: "/calculator", label: "Electrical calculator" },
       ];
+    case "expansion_manager":
+      return [{ ...home, label: "Dashboard" }, { href: "/calculator", label: "Electrical calculator" }];
     case "real_estate":
-      return [
-        { href: "/real-estate", label: "My properties" },
-        { href: "/real-estate/new", label: "Upload property" },
-        { href: "/calculator", label: "Electrical calculator" },
-      ];
+      return [{ ...home, label: "My properties" }, { href: "/real-estate/new", label: "Upload property" }];
+    case "ops":
+      return [{ ...home, label: "Site visits" }, { href: "/calculator", label: "Electrical calculator" }];
     default:
-      return [{ href: ROLE_INFO[user.role].portal, label: "Review queue", badge: pendingCount(user) }];
+      return [{ ...home, label: user.role === "finance" ? "Payments" : user.role === "founder" ? "Dashboard" : "Review queue" }];
   }
 }
 

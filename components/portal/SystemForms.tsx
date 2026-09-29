@@ -1,0 +1,66 @@
+"use client";
+
+import { useActionState } from "react";
+import { backupNow, saveSettings, verifyStorage, type SystemState } from "@/app/actions/admin";
+import type { Settings } from "@/lib/server/settings";
+import { Alert, buttonClass, Card, inputClass } from "./ui";
+
+function Result({ state }: { state: SystemState }) {
+  if (state.error) return <Alert tone="error">{state.error}</Alert>;
+  if (state.success) return <Alert tone="success">{state.success}</Alert>;
+  return null;
+}
+
+export function SystemPanel({ settings }: { settings: Settings }) {
+  const [saved, save, saving] = useActionState<SystemState, FormData>(saveSettings, {});
+  const [backup, runBackup, backingUp] = useActionState<SystemState>(backupNow, {});
+  const [verified, verify, verifying] = useActionState<SystemState>(verifyStorage, {});
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <Card title="Sales team voting">
+        <form action={save} className="space-y-3">
+          <Result state={saved} />
+          <p className="text-sm text-zinc-500">
+            Every sales team member can vote. A property moves to Ops once this many approve, or is rejected once this many
+            reject — whichever comes first.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">Approvals needed</span>
+              <input name="salesApprovalsRequired" type="number" min={1} max={50} defaultValue={settings.salesApprovalsRequired} className={inputClass} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">Rejections needed</span>
+              <input name="salesRejectionsRequired" type="number" min={1} max={50} defaultValue={settings.salesRejectionsRequired} className={inputClass} />
+            </label>
+          </div>
+          <button type="submit" disabled={saving} className={buttonClass.primary}>
+            Save
+          </button>
+        </form>
+      </Card>
+      <Card title="Maintenance">
+        <div className="space-y-3">
+          <Result state={backup} />
+          <Result state={verified} />
+          <div className="flex flex-wrap gap-3">
+            <form action={runBackup}>
+              <button type="submit" disabled={backingUp} className={buttonClass.primary}>
+                {backingUp ? "Backing up…" : "Back up now"}
+              </button>
+            </form>
+            <form action={verify}>
+              <button type="submit" disabled={verifying} className={buttonClass.secondary}>
+                {verifying ? "Checking every file…" : "Verify all files"}
+              </button>
+            </form>
+          </div>
+          <p className="text-xs text-zinc-500">
+            Verify re-reads every stored file and checks its SHA-256 fingerprint against the one recorded at upload, restoring
+            any missing local copy from the bucket.
+          </p>
+        </div>
+      </Card>
+    </div>
+  );
+}

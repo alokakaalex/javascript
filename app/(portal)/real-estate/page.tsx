@@ -2,33 +2,35 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import PropertyTable from "@/components/portal/PropertyTable";
 import { buttonClass, PageHeader } from "@/components/portal/ui";
-import { listProperties } from "@/lib/server/properties";
+import { actionQueue, listProperties } from "@/lib/server/properties";
 import { requireRole } from "@/lib/server/session";
 
 export const metadata: Metadata = { title: "My properties" };
 
 export default async function RealEstateHome() {
   const user = await requireRole("real_estate");
-  const properties = listProperties(user);
-  const count = (pred: (s: string) => boolean) => properties.filter((p) => pred(p.status)).length;
-
+  const all = listProperties(user);
+  const todo = actionQueue(user);
+  const todoIds = new Set(todo.map((p) => p.id));
   return (
     <>
       <PageHeader
         title="My properties"
-        subtitle={`${count((s) => s.startsWith("pending_"))} in review · ${count((s) => s === "approved")} approved · ${count((s) => s.startsWith("passed_"))} passed · ${count((s) => s === "draft")} drafts`}
+        subtitle="Scout and upload properties, then upload owner documents once Ops approves."
         actions={
           <Link href="/real-estate/new" className={buttonClass.primary}>
             + Upload property
           </Link>
         }
       />
-      <PropertyTable
-        properties={properties}
-        role={user.role}
-        hrefBase="/real-estate/properties"
-        empty="You haven't uploaded any properties yet."
-      />
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Needs your action ({todo.length})</h2>
+        <PropertyTable properties={todo} role={user.role} empty="Nothing needs you right now." />
+      </section>
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">In the pipeline ({all.length - todo.length})</h2>
+        <PropertyTable properties={all.filter((p) => !todoIds.has(p.id))} role={user.role} empty="Nothing in review yet." />
+      </section>
     </>
   );
 }

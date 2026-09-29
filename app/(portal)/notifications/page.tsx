@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { markNotificationsRead } from "@/app/actions/properties";
+import { markNotificationsRead } from "@/app/actions/pipeline";
 import { buttonClass, EmptyState, PageHeader } from "@/components/portal/ui";
 import { formatDateTime } from "@/lib/expansion/format";
 import { listNotifications } from "@/lib/server/notifications";

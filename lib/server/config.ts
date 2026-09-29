@@ -36,9 +36,29 @@ export const config = {
       }
     : null,
 
+  // Optional S3-compatible bucket (AWS S3, Cloudflare R2, Backblaze B2,
+  // MinIO…). When set, every uploaded file and every database backup is
+  // also written there, so losing the server's disk loses nothing.
+  s3: process.env.S3_BUCKET
+    ? {
+        bucket: process.env.S3_BUCKET,
+        region: process.env.S3_REGION || "auto",
+        endpoint: process.env.S3_ENDPOINT || undefined,
+        accessKeyId: process.env.S3_ACCESS_KEY_ID || "",
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || "",
+        prefix: (process.env.S3_PREFIX || "expansion-portal").replace(/^\/+|\/+$/g, ""),
+        forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
+      }
+    : null,
+
+  backupsDir: process.env.BACKUP_DIR ? path.resolve(/*turbopackIgnore: true*/ process.env.BACKUP_DIR) : path.join(/*turbopackIgnore: true*/ dataDir, "backups"),
+  backupIntervalHours: int("BACKUP_INTERVAL_HOURS", 6),
+  backupKeepLocal: int("BACKUP_KEEP", 60),
+
   sessionDays: int("SESSION_DAYS", 7),
   inviteDays: int("INVITE_DAYS", 7),
   maxImageBytes: int("MAX_IMAGE_MB", 25) * 1024 * 1024,
+  maxDocumentBytes: int("MAX_DOCUMENT_MB", 25) * 1024 * 1024,
   maxVideoBytes: int("MAX_VIDEO_MB", 500) * 1024 * 1024,
-  maxMediaPerProperty: int("MAX_MEDIA_PER_PROPERTY", 40),
+  maxFilesPerProperty: int("MAX_FILES_PER_PROPERTY", 300),
 };

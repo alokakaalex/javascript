@@ -52,7 +52,7 @@ export default async function UsersPage() {
       </Card>
 
       <Card title="Roles">
-        <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
+        <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
           {ROLES.map((r) => (
             <div key={r}>
               <dt className="font-medium text-zinc-900 dark:text-zinc-100">

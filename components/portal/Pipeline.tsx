@@ -19,7 +19,7 @@ const DOT: Record<StepState, string> = {
   current: "bg-amber-400 text-amber-950",
   hold: "bg-violet-600 text-white",
   rejected: "bg-rose-600 text-white",
-  upcoming: "bg-zinc-200 text-zinc-500 dark:bg-zinc-800",
+  upcoming: "bg-slate-200 text-slate-500",
 };
 
 const TEXT: Record<StepState, string> = {
@@ -60,28 +60,28 @@ export default function Pipeline({ property }: { property: PropertyView }) {
         const decisions = current.filter((d) => d.stage === stage);
         const note = taskNote(property, stage);
         return (
-          <li key={stage} className={`rounded-md border p-3 ${state === "current" || state === "hold" ? "border-amber-300 dark:border-amber-800" : "border-zinc-200 dark:border-zinc-800"}`}>
+          <li key={stage} className={`rounded-md border p-3 ${state === "current" || state === "hold" ? "border-amber-300" : "border-slate-200"}`}>
             <div className="flex items-center gap-2">
               <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${DOT[state]}`}>
                 {state === "done" ? "✓" : state === "rejected" ? "✕" : i + 1}
               </span>
               <div className="min-w-0">
-                <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{STAGE_INFO[stage].label}</div>
-                <div className="text-xs text-zinc-500">{TEXT[state]}</div>
+                <div className="text-sm font-medium text-slate-900">{STAGE_INFO[stage].label}</div>
+                <div className="text-xs text-slate-500">{TEXT[state]}</div>
               </div>
             </div>
             {decisions.map((d) => (
               <div key={d.id} className="mt-2 text-xs">
-                <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                <span className="font-medium text-slate-700">
                   {DECISION_LABEL[d.decision]} · {d.decidedByName}
                 </span>
-                <p className="line-clamp-3 text-zinc-600 dark:text-zinc-400" title={d.remarks}>
+                <p className="line-clamp-3 text-slate-600" title={d.remarks}>
                   “{d.remarks}”
                 </p>
-                <p className="text-zinc-400">{formatDateTime(d.decidedAt)}</p>
+                <p className="text-slate-400">{formatDateTime(d.decidedAt)}</p>
               </div>
             ))}
-            {note ? <p className="mt-2 text-xs text-zinc-500">{note}</p> : null}
+            {note ? <p className="mt-2 text-xs text-slate-500">{note}</p> : null}
           </li>
         );
       })}
@@ -90,30 +90,30 @@ export default function Pipeline({ property }: { property: PropertyView }) {
 }
 
 export function DecisionHistory({ property }: { property: PropertyView }) {
-  if (property.decisions.length === 0) return <p className="text-sm text-zinc-500">No decisions yet.</p>;
+  if (property.decisions.length === 0) return <p className="text-sm text-slate-500">No decisions yet.</p>;
   return (
     <ol className="space-y-3 text-sm">
       {[...property.decisions].reverse().map((d) => (
-        <li key={d.id} className="border-l-2 border-zinc-200 pl-3 dark:border-zinc-800">
+        <li key={d.id} className="border-l-2 border-slate-200 pl-3">
           <div className="flex flex-wrap items-baseline gap-x-2">
-            <span className="font-medium text-zinc-900 dark:text-zinc-100">{STAGE_INFO[d.stage].label}</span>
+            <span className="font-medium text-slate-900">{STAGE_INFO[d.stage].label}</span>
             <span
               className={
                 d.decision === "approved"
-                  ? "text-emerald-700 dark:text-emerald-400"
+                  ? "text-emerald-700"
                   : d.decision === "hold"
-                    ? "text-violet-700 dark:text-violet-400"
-                    : "text-rose-700 dark:text-rose-400"
+                    ? "text-violet-700"
+                    : "text-rose-700"
               }
             >
               {DECISION_LABEL[d.decision]}
             </span>
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-slate-500">
               {d.decidedByName} · {formatDateTime(d.decidedAt)}
               {property.round > 1 ? ` · round ${d.round}` : ""}
             </span>
           </div>
-          <p className="mt-0.5 whitespace-pre-wrap text-zinc-700 dark:text-zinc-300">{d.remarks}</p>
+          <p className="mt-0.5 whitespace-pre-wrap text-slate-700">{d.remarks}</p>
         </li>
       ))}
     </ol>

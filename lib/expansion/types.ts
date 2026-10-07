@@ -30,7 +30,8 @@ export interface StoredFile {
   mime: string;
   originalName: string;
   sizeBytes: number;
-  sha256: string;
+  /** SHA-256 fingerprint (files stored on the server's disk); bucket files carry the bucket's ETag instead. */
+  sha256: string | null;
   uploadedByName: string;
   createdAt: string;
   /** Replaced or removed; kept for the record, only admins/EM/founder see these. */

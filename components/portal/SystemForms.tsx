@@ -20,7 +20,7 @@ export function SystemPanel({ settings, approvers }: { settings: Settings; appro
       <Card title="Sales team voting">
         <form action={save} className="space-y-3">
           <Result state={saved} />
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-slate-500">
             Only sales members with approval access vote (set per person on Access &amp; roles; currently {approvers}). A
             property moves to Ops once this many approve, or is rejected once this many reject — whichever comes first.
           </p>
@@ -61,9 +61,8 @@ export function SystemPanel({ settings, approvers }: { settings: Settings; appro
               </button>
             </form>
           </div>
-          <p className="text-xs text-zinc-500">
-            Verify re-reads every stored file and checks its SHA-256 fingerprint against the one recorded at upload, restoring
-            any missing local copy from the bucket.
+          <p className="text-xs text-slate-500">
+            Verify checks every stored file is still there at its original size; files on the server&apos;s disk are also re-checked against the SHA-256 fingerprint taken at upload.
           </p>
         </div>
       </Card>

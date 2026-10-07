@@ -25,16 +25,16 @@ function Field({
 }) {
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
-      <label htmlFor={name} className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+      <label htmlFor={name} className="text-sm font-medium text-slate-700">
         {label}
       </label>
       {children}
       {error ? (
-        <p id={`${name}-error`} className="text-xs text-rose-600 dark:text-rose-400">
+        <p id={`${name}-error`} className="text-xs text-rose-600">
           {error}
         </p>
       ) : hint ? (
-        <p className="text-xs text-zinc-500">{hint}</p>
+        <p className="text-xs text-slate-500">{hint}</p>
       ) : null}
     </div>
   );
@@ -84,7 +84,7 @@ export default function PropertyForm({ property }: { property?: PropertyView }) 
       {state.error ? <Alert tone="error">{state.error}</Alert> : null}
 
       <fieldset className="grid gap-4 sm:grid-cols-2">
-        <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Property &amp; location</legend>
+        <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Property &amp; location</legend>
         <Field name="storeName" label="Store / property name" hint="e.g. Rohini Sec-7 Dark Store" error={errors.storeName}>
           {input("storeName", { maxLength: 150 })}
         </Field>
@@ -106,7 +106,7 @@ export default function PropertyForm({ property }: { property?: PropertyView }) 
       </fieldset>
 
       <fieldset className="grid gap-4 sm:grid-cols-4">
-        <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Area &amp; structure</legend>
+        <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Area &amp; structure</legend>
         <Field name="totalAreaSqft" label="Total area (sq ft)" error={errors.totalAreaSqft}>
           {input("totalAreaSqft", { ...amount, min: 1 })}
         </Field>
@@ -137,7 +137,7 @@ export default function PropertyForm({ property }: { property?: PropertyView }) 
       </fieldset>
 
       <fieldset className="grid gap-4 sm:grid-cols-3">
-        <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Commercials</legend>
+        <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Commercials</legend>
         <Field name="askingRent" label="Asking rent per month (₹)" error={errors.askingRent}>
           {input("askingRent", { ...amount, min: 1 })}
         </Field>

@@ -3,86 +3,103 @@ import { SystemPanel } from "@/components/portal/SystemForms";
 import { Alert, Card, PageHeader } from "@/components/portal/ui";
 import { formatBytes, formatDateTime } from "@/lib/expansion/format";
 import { backupIsStale, listBackups, storageStatus } from "@/lib/server/backups";
+import { config } from "@/lib/server/config";
 import { emailEnabled } from "@/lib/server/mailer";
 import { requireRole } from "@/lib/server/session";
 import { getSettings } from "@/lib/server/settings";
 import { salesApproverCount } from "@/lib/server/users";
 
-export const metadata: Metadata = { title: "Backups & settings" };
+export const metadata: Metadata = { title: "Data & backups" };
+
+function Fact({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${ok ? "bg-emerald-500" : "bg-amber-400"}`} aria-hidden />
+      <div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+        <div className="text-sm text-navy-900">{value}</div>
+      </div>
+    </div>
+  );
+}
 
 export default async function SystemPage() {
   await requireRole("admin");
-  const s = storageStatus();
-  const backups = listBackups(30);
-  const settings = getSettings();
+  const [s, backups, settings, stale, approvers] = await Promise.all([storageStatus(), listBackups(30), getSettings(), backupIsStale(), salesApproverCount()]);
   const last = backups[0];
-  const stale = backupIsStale();
+  const durableDb = s.database === "postgres";
+  const durableFiles = s.storage === "s3";
 
   return (
     <>
-      <PageHeader title="Backups, storage & settings" subtitle="How the portal keeps every document and record safe." />
+      <PageHeader eyebrow="Access Manager" title="Data & backups" subtitle="Where every record and document is kept, and how it's protected." />
 
-      {!s.remoteEnabled ? (
+      {config.demoMode ? (
+        <Alert tone="warning">This is the demo environment: data lives in a temporary embedded database and resets from time to time.</Alert>
+      ) : !durableDb || !durableFiles ? (
         <Alert tone="warning">
-          <strong>Off-site copy is not configured.</strong> Files and backups are only on this server&apos;s disk. Set the
-          <code> S3_*</code> variables (AWS S3, Cloudflare R2, Backblaze B2…) so a copy of every file and every backup
-          is kept off the server. See the README.
+          <strong>Not fully protected yet.</strong>{" "}
+          {!durableDb ? "Records are in the embedded database on this server — set DATABASE_URL to a managed Postgres (Neon, Supabase…). " : ""}
+          {!durableFiles ? "Files are on this server's disk — set the S3_* variables to keep them in a cloud bucket (Cloudflare R2, AWS S3…). " : ""}
+          See the README → Going live.
         </Alert>
-      ) : s.pendingRemote ? (
-        <Alert tone="warning">{s.pendingRemote} file(s) haven&apos;t reached the bucket yet; they&apos;re retried with every backup.</Alert>
       ) : null}
-      {stale ? <Alert tone="error">No successful backup in the last {s.intervalHours * 2} hours. Check the server logs, or run one now.</Alert> : null}
+      {stale && !config.demoMode ? <Alert tone="error">No successful backup recently. Check the server logs, or back up now.</Alert> : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
+        <Card title="Where data lives">
+          <div className="space-y-4">
+            <Fact label="Records" ok={durableDb} value={durableDb ? "Managed PostgreSQL (DATABASE_URL)" : "Embedded PostgreSQL on this server"} />
+            <Fact label="Photos, videos & documents" ok={durableFiles} value={durableFiles ? `Cloud bucket ${s.bucket}` : "This server's disk"} />
+            <Fact label="Email" ok={emailEnabled()} value={emailEnabled() ? "SMTP configured — invites, alerts and LOIs are emailed" : "Not configured — in-app only"} />
+          </div>
+        </Card>
         <Card title="Stored files">
-          <p className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">{s.files}</p>
-          <p className="text-sm text-zinc-500">{formatBytes(s.bytes)} total · never deleted</p>
-          <p className="mt-2 text-xs text-zinc-500">Off-site bucket: {s.bucket ?? "not configured"}</p>
-        </Card>
-        <Card title="Database backups">
-          <p className="text-sm text-zinc-700 dark:text-zinc-300">
-            Every {s.intervalHours} hours to <code className="text-xs">{s.backupsDir}</code>
-            {s.remoteEnabled ? " and the bucket" : ""}.
+          <p className="text-3xl font-semibold text-navy-950" style={{ fontFamily: "var(--font-display)" }}>
+            {s.files}
           </p>
-          <p className="mt-1 text-sm text-zinc-500">Last: {last ? `${formatDateTime(last.createdAt)}${last.error ? " (with errors)" : ""}` : "never"}</p>
+          <p className="text-sm text-slate-500">{formatBytes(s.bytes)} in total · no size limit per file · never deleted</p>
         </Card>
-        <Card title="Email">
-          <p className="text-sm text-zinc-700 dark:text-zinc-300">
-            {emailEnabled() ? "SMTP configured: invites, notifications and LOIs are emailed." : "Not configured: notifications are in-app only and LOIs must be sent manually."}
+        <Card title="Backups">
+          <p className="text-sm text-navy-900">
+            A snapshot of every table, every {s.intervalHours} hours on a server (daily on Vercel), saved to {durableFiles ? "the bucket" : s.backupsDir}.
           </p>
+          <p className="mt-2 text-sm text-slate-500">Last: {last ? `${formatDateTime(last.createdAt)}${last.error ? " (failed)" : ""}` : "never"}</p>
         </Card>
       </div>
 
-      <SystemPanel settings={settings} approvers={salesApproverCount()} />
+      <SystemPanel settings={settings} approvers={approvers} />
 
       <Card title="Recent backups">
         {backups.length === 0 ? (
-          <p className="text-sm text-zinc-500">No backups yet.</p>
+          <p className="text-sm text-slate-500">No backups yet.</p>
         ) : (
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-zinc-500">
-                <th className="py-1 pr-4">When</th>
-                <th className="py-1 pr-4">File</th>
-                <th className="py-1 pr-4">Size</th>
-                <th className="py-1 pr-4">Off-site</th>
-                <th className="py-1 pr-4">Trigger</th>
-                <th className="py-1">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {backups.map((b) => (
-                <tr key={b.id} className="border-t border-zinc-100 dark:border-zinc-900">
-                  <td className="py-1.5 pr-4 whitespace-nowrap">{formatDateTime(b.createdAt)}</td>
-                  <td className="py-1.5 pr-4 font-mono text-xs">{b.fileName}</td>
-                  <td className="py-1.5 pr-4">{formatBytes(b.sizeBytes)}</td>
-                  <td className="py-1.5 pr-4">{b.remoteCopy ? "✓" : "—"}</td>
-                  <td className="py-1.5 pr-4">{b.trigger}</td>
-                  <td className={`py-1.5 ${b.error ? "text-rose-600" : "text-emerald-700 dark:text-emerald-400"}`}>{b.error ?? "OK"}</td>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-left text-[0.7rem] uppercase tracking-wider text-slate-500">
+                  <th className="py-2 pr-4">When</th>
+                  <th className="py-2 pr-4">File</th>
+                  <th className="py-2 pr-4">Size</th>
+                  <th className="py-2 pr-4">Saved to</th>
+                  <th className="py-2 pr-4">Trigger</th>
+                  <th className="py-2">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {backups.map((b) => (
+                  <tr key={b.id} className="border-t border-slate-100">
+                    <td className="whitespace-nowrap py-2 pr-4">{formatDateTime(b.createdAt)}</td>
+                    <td className="py-2 pr-4 font-mono text-xs">{b.fileName}</td>
+                    <td className="py-2 pr-4">{formatBytes(b.sizeBytes)}</td>
+                    <td className="py-2 pr-4">{b.location}</td>
+                    <td className="py-2 pr-4">{b.trigger}</td>
+                    <td className={`py-2 ${b.error ? "text-rose-600" : "text-emerald-700"}`}>{b.error ?? "OK"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
     </>

@@ -7,7 +7,7 @@ import { Alert, buttonClass, inputClass } from "./ui";
 function Labeled({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+      <label htmlFor={id} className="text-sm font-medium text-slate-700">
         {label}
       </label>
       {children}
@@ -46,7 +46,7 @@ export function SetPasswordForm({ token, email }: { token: string; email: string
       <Labeled id="password" label="New password">
         <input id="password" name="password" type="password" autoComplete="new-password" minLength={10} required className={inputClass} />
       </Labeled>
-      <p className="-mt-2 text-xs text-zinc-500">{PASSWORD_HINT}</p>
+      <p className="-mt-2 text-xs text-slate-500">{PASSWORD_HINT}</p>
       <Labeled id="confirm" label="Confirm password">
         <input id="confirm" name="confirm" type="password" autoComplete="new-password" minLength={10} required className={inputClass} />
       </Labeled>
@@ -69,7 +69,7 @@ export function ChangePasswordForm() {
       <Labeled id="next" label="New password">
         <input id="next" name="next" type="password" autoComplete="new-password" minLength={10} required className={inputClass} />
       </Labeled>
-      <p className="-mt-2 text-xs text-zinc-500">{PASSWORD_HINT}</p>
+      <p className="-mt-2 text-xs text-slate-500">{PASSWORD_HINT}</p>
       <Labeled id="confirm" label="Confirm new password">
         <input id="confirm" name="confirm" type="password" autoComplete="new-password" minLength={10} required className={inputClass} />
       </Labeled>

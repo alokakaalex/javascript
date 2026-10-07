@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/portal/AuthForms";
+import AuthFrame from "@/components/portal/AuthFrame";
 import { Alert } from "@/components/portal/ui";
 import { ROLE_INFO } from "@/lib/expansion/roles";
 import { currentUser } from "@/lib/server/session";
@@ -11,10 +12,10 @@ import { DEMO_PASSWORD, DEMO_USERS } from "@/lib/server/demo";
 
 function DemoAccounts() {
   return (
-    <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40">
+    <div className="space-y-3 rounded-2xl border border-brand-200 bg-brand-50 p-4">
       <div>
-        <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Demo: sign in as any role</p>
-        <p className="text-xs text-amber-800 dark:text-amber-300">
+        <p className="text-sm font-semibold text-navy-900">Demo — sign in as any role</p>
+        <p className="text-xs text-navy-700">
           Every account&apos;s password is <code className="font-mono">{DEMO_PASSWORD}</code>. Sample data resets from time to time.
         </p>
       </div>
@@ -24,10 +25,10 @@ function DemoAccounts() {
             <input type="hidden" name="userId" value={u.id} />
             <button
               type="submit"
-              className="flex w-full items-center justify-between rounded-md border border-amber-200 bg-white px-3 py-2 text-left text-sm hover:border-amber-400 dark:border-amber-900 dark:bg-zinc-900"
+              className="flex w-full items-center justify-between rounded-xl border border-brand-100 bg-white px-3 py-2 text-left text-sm transition hover:border-brand-400 hover:shadow-sm"
             >
-              <span className="font-medium text-zinc-900 dark:text-zinc-100">{u.name}</span>
-              <span className="text-xs text-zinc-500">{u.email}</span>
+              <span className="font-semibold text-navy-900">{u.name}</span>
+              <span className="text-xs text-slate-500">{u.email}</span>
             </button>
           </form>
         ))}
@@ -41,29 +42,27 @@ export const metadata: Metadata = { title: "Sign in" };
 export default async function LoginPage() {
   const user = await currentUser();
   if (user) redirect(ROLE_INFO[user.role].portal);
-  const noUsers = countUsers() === 0 && !config.demoMode;
+  const noUsers = !config.demoMode && (await countUsers()) === 0;
 
   return (
-    <main className="flex flex-1 items-center justify-center px-6 py-16">
-      <div className={`w-full space-y-6 ${config.demoMode ? "max-w-md" : "max-w-sm"}`}>
-        <div className="text-center">
-          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">Expansion Portal</h1>
-          <p className="mt-1 text-sm text-zinc-500">Sign in with the email your access manager added.</p>
+    <AuthFrame>
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-semibold text-navy-950">Sign in</h2>
+          <p className="mt-1 text-sm text-slate-500">Use the work email your access manager added.</p>
         </div>
         {noUsers ? (
           <Alert tone="warning">
-            No accounts exist yet. Set <code>ADMIN_EMAIL</code> and <code>ADMIN_INITIAL_PASSWORD</code> in the
-            server environment and restart to create the first access manager.
+            No accounts exist yet. Set <code>ADMIN_EMAIL</code> and <code>ADMIN_INITIAL_PASSWORD</code> in the server environment and restart to
+            create the first access manager.
           </Alert>
         ) : null}
-        <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_8px_30px_-12px_rgba(48,51,68,0.25)]">
           <LoginForm />
         </div>
         {config.demoMode ? <DemoAccounts /> : null}
-        <p className="text-center text-xs text-zinc-500">
-          Forgot your password or need access? Ask your access manager for a new link.
-        </p>
+        <p className="text-xs text-slate-500">Forgot your password or need access? Ask your access manager for a new link.</p>
       </div>
-    </main>
+    </AuthFrame>
   );
 }

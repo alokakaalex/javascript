@@ -16,7 +16,7 @@ function IssuedLink({ link }: { link: NonNullable<AdminFormState["link"]> }) {
         {link.emailed ? " (if the email doesn't arrive)" : ""}:
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <code className="max-w-full break-all rounded bg-white/70 px-2 py-1 text-xs text-zinc-800 dark:bg-black/40 dark:text-zinc-200">
+        <code className="max-w-full break-all rounded bg-white/70 px-2 py-1 text-xs text-slate-800">
           {link.url}
         </code>
         <button
@@ -60,19 +60,19 @@ export function AddUserForm() {
       {state.link ? <IssuedLink link={state.link} /> : null}
       <form action={action} className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
         <div className="flex flex-col gap-1">
-          <label htmlFor="new-email" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <label htmlFor="new-email" className="text-sm font-medium text-slate-700">
             Email
           </label>
           <input id="new-email" name="email" type="email" required placeholder="name@company.com" className={inputClass} />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="new-name" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <label htmlFor="new-name" className="text-sm font-medium text-slate-700">
             Name
           </label>
           <input id="new-name" name="name" required maxLength={120} className={inputClass} />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="new-role" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <label htmlFor="new-role" className="text-sm font-medium text-slate-700">
             Role
           </label>
           <RoleSelect id="new-role" onChange={setRole} />
@@ -81,7 +81,7 @@ export function AddUserForm() {
           {pending ? "Adding…" : "Add & create invite"}
         </button>
         {role === "sales" ? (
-          <label className="flex items-center gap-2 text-sm text-zinc-700 sm:col-span-4 dark:text-zinc-300">
+          <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-4">
             <input type="checkbox" name="salesApprover" className="h-4 w-4" />
             Can approve / reject properties (otherwise view only)
           </label>
@@ -100,7 +100,7 @@ export function UserActions({ user, isSelf }: { user: User; isSelf: boolean }) {
       <input type="hidden" name="email" value={user.email} />
     </>
   );
-  if (isSelf) return <span className="text-xs text-zinc-500">This is you</span>;
+  if (isSelf) return <span className="text-xs text-slate-500">This is you</span>;
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">

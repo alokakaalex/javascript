@@ -12,18 +12,20 @@ function int(name: string, fallback: number): number {
 
 // Demo mode: seeded sample data, one-click sign-in per role, and a banner
 // saying data resets. On by default on Vercel (whose disk is temporary).
-const demoMode = process.env.DEMO_MODE === "true" || (Boolean(process.env.VERCEL) && process.env.DEMO_MODE !== "false");
+// Once a real database is attached (DATABASE_URL), the demo switches off.
+const hasDatabase = Boolean(process.env.DATABASE_URL || process.env.POSTGRES_URL);
+const demoMode = process.env.DEMO_MODE === "true" || (Boolean(process.env.VERCEL) && !hasDatabase && process.env.DEMO_MODE !== "false");
 // Vercel's filesystem is read-only apart from /tmp.
 const defaultDataDir = process.env.VERCEL ? "/tmp/expansion-portal" : path.join(process.cwd(), "data");
 const dataDir = path.resolve(/*turbopackIgnore: true*/ process.env.DATA_DIR || defaultDataDir);
-// Vercel functions accept request bodies up to 4.5 MB.
-const hostLimitMb = process.env.VERCEL ? 4 : Infinity;
-const mb = (name: string, fallback: number) => Math.min(int(name, fallback), hostLimitMb) * 1024 * 1024;
 
 export const config = {
   demoMode,
   dataDir,
-  databasePath: process.env.DATABASE_PATH || path.join(dataDir, "expansion.db"),
+  /** Managed Postgres (production). Vercel's Neon integration sets POSTGRES_URL / DATABASE_URL. */
+  databaseUrl: process.env.DATABASE_URL || process.env.POSTGRES_URL || null,
+  /** Embedded Postgres (PGlite) folder when there's no DATABASE_URL; ":memory:" for tests. */
+  databasePath: process.env.DATABASE_PATH || path.join(dataDir, "pgdata"),
   uploadsDir: path.join(dataDir, "uploads"),
   appUrl: (process.env.APP_URL || "http://localhost:3000").replace(/\/+$/, ""),
   secureCookies: process.env.NODE_ENV === "production" && !process.env.INSECURE_COOKIES,
@@ -66,8 +68,9 @@ export const config = {
 
   sessionDays: int("SESSION_DAYS", 7),
   inviteDays: int("INVITE_DAYS", 7),
-  maxImageBytes: mb("MAX_IMAGE_MB", 25),
-  maxDocumentBytes: mb("MAX_DOCUMENT_MB", 25),
-  maxVideoBytes: mb("MAX_VIDEO_MB", 500),
-  maxFilesPerProperty: int("MAX_FILES_PER_PROPERTY", 300),
+  // Uploads have no size limit: large files go straight to the bucket in
+  // parts, or through the server in chunks small enough for any host.
+  // Vercel functions accept at most 4.5 MB per request, hence 4 MB chunks there.
+  chunkBytes: (process.env.VERCEL ? 4 : int("UPLOAD_CHUNK_MB", 16)) * 1024 * 1024,
+  maxFilesPerProperty: int("MAX_FILES_PER_PROPERTY", 1000),
 };

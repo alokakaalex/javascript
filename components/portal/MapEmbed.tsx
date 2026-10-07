@@ -10,23 +10,23 @@ export default function MapEmbed({ property }: { property: PropertyView }) {
   const open = mapOpenUrl(property.mapUrl, property.address ?? "", coords);
   return (
     <div className="space-y-2">
-      <p className="text-sm text-zinc-700 dark:text-zinc-300">{property.address}</p>
+      <p className="text-sm text-slate-700">{property.address}</p>
       {embed ? (
         <iframe
           title={`Map of ${property.storeName}`}
           src={embed}
-          className="h-72 w-full rounded-md border border-zinc-200 dark:border-zinc-800"
+          className="h-72 w-full rounded-md border border-slate-200"
           loading="lazy"
           referrerPolicy="no-referrer-when-downgrade"
         />
       ) : null}
       {open ? (
-        <a href={open} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-400">
+        <a href={open} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-sky-700 hover:underline">
           Open in Google Maps ↗
         </a>
       ) : null}
       {!coords && property.mapUrl ? (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-slate-500">
           The embedded map is based on the address; the Google Maps link above has the exact pin.
         </p>
       ) : null}

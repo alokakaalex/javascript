@@ -6,9 +6,9 @@ import type { User } from "@/lib/expansion/types";
 import type { FileCategory, Stage } from "@/lib/expansion/workflow";
 import { config } from "./config";
 import { hashPasswordSync } from "./crypto";
-import { db, now } from "./db";
+import { now, one, run } from "./db";
 import { DEMO_ASSETS, type DemoAsset } from "./demoAssets";
-import { saveUpload } from "./files";
+import { storeBytes } from "./files";
 import * as pipeline from "./pipeline";
 import { createProperty, submitProperty } from "./properties";
 import { getUser } from "./users";
@@ -40,16 +40,7 @@ function fileId(): string {
 
 async function put(user: User, propertyId: number, category: FileCategory, asset: DemoAsset, name: string, ownerId?: number) {
   const { mime, data } = DEMO_ASSETS[asset];
-  const bytes = Buffer.from(data, "base64");
-  await saveUpload(user, propertyId, {
-    fileId: fileId(),
-    category,
-    ownerId: ownerId ?? null,
-    mime,
-    originalName: name,
-    declaredSize: bytes.length,
-    body: new Blob([bytes]).stream(),
-  });
+  await storeBytes(user, propertyId, { fileId: fileId(), category, ownerId: ownerId ?? null, mime, name, bytes: Buffer.from(data, "base64") });
 }
 
 const BASE: Omit<PropertyInput, "storeName" | "address" | "mapUrl" | "latitude" | "longitude"> = {
@@ -114,36 +105,36 @@ async function runScenario(u: Record<string, User>, s: Scenario, index: number) 
     longitude: s.lng,
     ...s.overrides,
   };
-  const id = createProperty(u.re, input);
+  const id = await createProperty(u.re, input);
   await put(u.re, id, "property_media", "front", "shop-front.jpg");
   await put(u.re, id, "property_media", "interior", "interior.jpg");
   await put(u.re, id, "property_media", "loading", "loading-bay.jpg");
-  submitProperty(u.re, id);
+  await submitProperty(u.re, id);
   const reach = (stage: Stage | "done") => ORDER.indexOf(s.until) > ORDER.indexOf(stage);
 
   if (s.end === "em_reject") {
-    pipeline.decide(u.em, id, "rejected", "Rent is ~40% above comparable shops on Vikas Marg and carpet area is too small for a dark store.");
+    await pipeline.decide(u.em, id, "rejected", "Rent is ~40% above comparable shops on Vikas Marg and carpet area is too small for a dark store.");
     return;
   }
   if (!reach("em_review")) return;
-  pipeline.decide(u.em, id, "approved", "Good catchment and access; rent in line with the area.");
+  await pipeline.decide(u.em, id, "approved", "Good catchment and access; rent in line with the area.");
   if (s.end === "bl_hold") {
-    pipeline.decide(u.bl, id, "hold", "Hold until the Q3 East Delhi budget is signed off.");
+    await pipeline.decide(u.bl, id, "hold", "Hold until the Q3 East Delhi budget is signed off.");
     return;
   }
   if (!reach("bl_review")) return;
-  pipeline.decide(u.bl, id, "approved", "Fits the city expansion plan and budget.");
+  await pipeline.decide(u.bl, id, "approved", "Fits the city expansion plan and budget.");
   if (!reach("sales_review")) return;
-  pipeline.decide(u.sales, id, "approved", "Dense residential catchment within 2 km; strong order density.");
+  await pipeline.decide(u.sales, id, "approved", "Dense residential catchment within 2 km; strong order density.");
   if (!reach("ops_review")) return;
   await put(u.ops, id, "ops_media", "site", "site-visit.jpg");
-  pipeline.saveVisit(u.ops, id, {
+  await pipeline.saveVisit(u.ops, id, {
     visited: true,
     scopeOfWork: "1. Repaint interior and shutters\n2. 63A 3-phase electrical connection\n3. Epoxy flooring\n4. Two new rolling shutters at the loading bay",
   });
-  pipeline.decide(u.ops, id, "approved", "Structure sound; loading bay fits a 14 ft truck.");
+  await pipeline.decide(u.ops, id, "approved", "Structure sound; loading bay fits a 14 ft truck.");
   if (!reach("documents")) return;
-  const ownerId = pipeline.addOwner(u.re, id, {
+  const ownerId = await pipeline.addOwner(u.re, id, {
     name: index % 2 ? "Sunita Aggarwal" : "R. K. Sharma",
     email: index % 2 ? "sunita.owner@example.com" : "rk.owner@example.com",
     phone: "9876543210",
@@ -161,47 +152,54 @@ async function runScenario(u: Record<string, User>, s: Scenario, index: number) 
   await put(u.re, id, "electricity_bill", "bill", "electricity-bill.pdf");
   await put(u.re, id, "lease_deed", "bill", "registered-lease-deed.pdf");
   await put(u.re, id, "property_tax_receipt", "bill", "property-tax-receipt.pdf");
-  pipeline.completeDocuments(u.re, id);
+  await pipeline.completeDocuments(u.re, id);
   if (!reach("loi")) return;
   await put(u.em, id, "loi", "loi", "LOI.pdf");
-  pipeline.sendLoi(u.em, id);
+  await pipeline.sendLoi(u.em, id);
   await put(u.em, id, "signed_loi", "loi", "LOI-signed.pdf");
-  pipeline.confirmSignedLoi(u.em, id);
+  await pipeline.confirmSignedLoi(u.em, id);
   if (!reach("founder_review")) return;
-  pipeline.decide(u.founder, id, "approved", "Approved. Proceed with the token and agreement.");
+  await pipeline.decide(u.founder, id, "approved", "Approved. Proceed with the token and agreement.");
   if (!reach("token_payment")) return;
   await put(u.finance, id, "token_receipt", "receipt", "token-utr.pdf");
-  pipeline.recordPayment(u.finance, id, "token", { amount: 100000, utr: `HDFCN5202610${String(id).padStart(7, "0")}`, paidOn: now().slice(0, 10), notes: "" });
+  await pipeline.recordPayment(u.finance, id, "token", { amount: 100000, utr: `HDFCN5202610${String(id).padStart(7, "0")}`, paidOn: now().slice(0, 10), notes: "" });
   if (s.stampDuty) {
     await put(u.em, id, "stamp_duty_calculation", "bill", "stamp-duty-calculation.pdf");
-    pipeline.requestStampDuty(u.em, id, { amount: 42000, remarks: "Owner wants the lease registered." });
+    await pipeline.requestStampDuty(u.em, id, { amount: 42000, remarks: "Owner wants the lease registered." });
   }
   if (!reach("agreement")) return;
   await put(u.em, id, "agreement", "agreement", "lease-agreement-notarised.pdf");
-  pipeline.confirmAgreement(u.em, id);
+  await pipeline.confirmAgreement(u.em, id);
   if (!reach("balance_payment")) return;
   await put(u.finance, id, "balance_receipt", "receipt", "balance-utr.pdf");
   const balance = (input.securityDeposit + input.advanceRent) - 100000;
-  pipeline.recordPayment(u.finance, id, "balance", { amount: balance, utr: `HDFCN5202611${String(id).padStart(7, "0")}`, paidOn: now().slice(0, 10), notes: "" });
+  await pipeline.recordPayment(u.finance, id, "balance", { amount: balance, utr: `HDFCN5202611${String(id).padStart(7, "0")}`, paidOn: now().slice(0, 10), notes: "" });
   if (s.stampDuty === "paid") {
-    const request = db().prepare("SELECT id FROM payments WHERE property_id = ? AND kind = 'stamp_duty'").get(id) as { id: number };
+    const request = (await one<{ id: number }>("SELECT id FROM payments WHERE property_id = ? AND kind = 'stamp_duty'", id))!;
     await put(u.finance, id, "stamp_duty_receipt", "receipt", "stamp-duty-utr.pdf");
-    pipeline.payStampDuty(u.finance, request.id, { amount: 42000, utr: `SBIN0STAMP${String(id).padStart(6, "0")}`, paidOn: now().slice(0, 10), notes: "" });
+    await pipeline.payStampDuty(u.finance, request.id, { amount: 42000, utr: `SBIN0STAMP${String(id).padStart(6, "0")}`, paidOn: now().slice(0, 10), notes: "" });
   }
 }
 
 async function seed() {
-  if ((db().prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }).n > 0) return;
+  if ((await one<{ n: number }>("SELECT COUNT(*)::int AS n FROM users"))!.n > 0) return;
   const hash = hashPasswordSync(DEMO_PASSWORD);
-  const insert = db().prepare(
-    "INSERT INTO users (id, email, name, role, status, sales_approver, password_hash, created_at) VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
-  );
-  for (const d of DEMO_USERS) insert.run(d.id, d.email, d.name, d.role, d.salesApprover ? 1 : 0, hash, now());
-  const u = Object.fromEntries(
-    [["admin", "demo-admin"], ["em", "demo-em"], ["re", "demo-re"], ["bl", "demo-bl"], ["sales", "demo-sales"], ["ops", "demo-ops"], ["founder", "demo-founder"], ["finance", "demo-finance"]].map(
-      ([k, id]) => [k, getUser(id)!],
-    ),
-  );
+  for (const d of DEMO_USERS) {
+    await run(
+      "INSERT INTO users (id, email, name, role, status, sales_approver, password_hash, created_at) VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
+      d.id,
+      d.email,
+      d.name,
+      d.role,
+      d.salesApprover ? 1 : 0,
+      hash,
+      now(),
+    );
+  }
+  const u: Record<string, User> = {};
+  for (const [k, id] of [["admin", "demo-admin"], ["em", "demo-em"], ["re", "demo-re"], ["bl", "demo-bl"], ["sales", "demo-sales"], ["ops", "demo-ops"], ["founder", "demo-founder"], ["finance", "demo-finance"]]) {
+    u[k] = (await getUser(id))!;
+  }
   fileSeq = 0;
   // Oldest first, so the dashboard lists the newest-looking ones at the top.
   for (const [i, s] of [...SCENARIOS].reverse().entries()) await runScenario(u, s, i);

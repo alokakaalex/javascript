@@ -15,12 +15,12 @@ export default function WarehouseForm({ inputs, onChange }: Props) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-600 dark:text-zinc-400">
+        <span className="text-slate-600">
           Warehouse name (optional)
         </span>
         <input
           type="text"
-          className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-zinc-900 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+          className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-900 focus:border-slate-500 focus:outline-none"
           value={inputs.warehouseName}
           placeholder="e.g. Sector 12 warehouse"
           onChange={(e) => set("warehouseName", e.target.value)}

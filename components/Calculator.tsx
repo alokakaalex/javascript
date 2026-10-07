@@ -64,10 +64,10 @@ export default function Calculator() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-10">
       <header>
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
+        <h1 className="text-2xl font-semibold text-slate-900">
           Warehouse Electrical Asset Model
         </h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <p className="mt-1 text-sm text-slate-500">
           Enter the warehouse area to get an asset count and cost estimate,
           calibrated from three real fit-outs (Ashok Vihar, Naraina &amp;
           Jahangirpuri). Add more of your own project data on the Formulas
@@ -75,7 +75,7 @@ export default function Calculator() {
         </p>
       </header>
 
-      <nav className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800">
+      <nav className="flex gap-2 border-b border-slate-200">
         {(
           [
             ["calculator", "Calculator"],
@@ -87,8 +87,8 @@ export default function Calculator() {
             onClick={() => setTab(key)}
             className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
               tab === key
-                ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100"
-                : "border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                ? "border-slate-900 text-slate-900"
+                : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
             {label}
@@ -98,15 +98,15 @@ export default function Calculator() {
 
       {tab === "calculator" ? (
         <div className="flex flex-col gap-8">
-          <section className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
-            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+          <section className="rounded border border-slate-200 p-4">
+            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
               Warehouse parameters
             </h2>
             <WarehouseForm inputs={inputs} onChange={setInputs} />
           </section>
 
           <section>
-            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
               Asset count & cost estimate
             </h2>
             <ResultsPanel

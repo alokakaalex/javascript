@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Notifications" };
 
 export default async function NotificationsPage() {
   const user = await requireUser();
-  const items = listNotifications(user.id);
+  const items = await listNotifications(user.id);
   const unread = items.filter((n) => !n.readAt).length;
 
   return (
@@ -31,16 +31,16 @@ export default async function NotificationsPage() {
       {items.length === 0 ? (
         <EmptyState>No notifications yet.</EmptyState>
       ) : (
-        <ul className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-950">
+        <ul className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white">
           {items.map((n) => (
-            <li key={n.id} className={`flex gap-4 px-5 py-4 ${n.readAt ? "" : "bg-sky-50/60 dark:bg-sky-950/30"}`}>
+            <li key={n.id} className={`flex gap-4 px-5 py-4 ${n.readAt ? "" : "bg-sky-50/60"}`}>
               <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.readAt ? "bg-transparent" : "bg-sky-500"}`} aria-hidden />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <p className="font-medium text-zinc-900 dark:text-zinc-100">{n.title}</p>
-                  <time className="text-xs text-zinc-500">{formatDateTime(n.createdAt)}</time>
+                  <p className="font-medium text-slate-900">{n.title}</p>
+                  <time className="text-xs text-slate-500">{formatDateTime(n.createdAt)}</time>
                 </div>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-600 dark:text-zinc-400">{n.body}</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{n.body}</p>
                 <div className="mt-2 flex gap-4">
                   {n.link ? (
                     <Link href={n.link} className={buttonClass.link}>
@@ -50,7 +50,7 @@ export default async function NotificationsPage() {
                   {!n.readAt ? (
                     <form action={markNotificationsRead}>
                       <input type="hidden" name="notificationId" value={n.id} />
-                      <button type="submit" className="text-sm text-zinc-500 hover:underline">
+                      <button type="submit" className="text-sm text-slate-500 hover:underline">
                         Mark as read
                       </button>
                     </form>

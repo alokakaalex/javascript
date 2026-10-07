@@ -9,8 +9,7 @@ export const metadata: Metadata = { title: "My properties" };
 
 export default async function RealEstateHome() {
   const user = await requireRole("real_estate");
-  const all = listProperties(user);
-  const todo = actionQueue(user);
+  const [all, todo] = await Promise.all([listProperties(user), actionQueue(user)]);
   const todoIds = new Set(todo.map((p) => p.id));
   return (
     <>
@@ -24,11 +23,11 @@ export default async function RealEstateHome() {
         }
       />
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Needs your action ({todo.length})</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Needs your action ({todo.length})</h2>
         <PropertyTable properties={todo} role={user.role} empty="Nothing needs you right now." />
       </section>
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">In the pipeline ({all.length - todo.length})</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">In the pipeline ({all.length - todo.length})</h2>
         <PropertyTable properties={all.filter((p) => !todoIds.has(p.id))} role={user.role} empty="Nothing in review yet." />
       </section>
     </>

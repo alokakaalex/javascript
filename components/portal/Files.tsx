@@ -11,11 +11,11 @@ export function MediaGrid({ files, propertyId, canRemove }: { files: StoredFile[
   return (
     <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {live.map((f) => (
-        <li key={f.id} className="overflow-hidden rounded-md border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
+        <li key={f.id} className="overflow-hidden rounded-md border border-slate-200 bg-slate-50">
           {f.kind === "video" ? (
             <video src={`/api/files/${f.id}`} controls preload="metadata" className="aspect-video w-full bg-black" />
           ) : f.mime === "image/heic" || f.mime === "image/heif" ? (
-            <a href={`/api/files/${f.id}?download`} className="flex aspect-video items-center justify-center text-xs text-zinc-500">
+            <a href={`/api/files/${f.id}?download`} className="flex aspect-video items-center justify-center text-xs text-slate-500">
               HEIC photo — download
             </a>
           ) : (
@@ -25,7 +25,7 @@ export function MediaGrid({ files, propertyId, canRemove }: { files: StoredFile[
               <img src={`/api/files/${f.id}`} alt={f.originalName} loading="lazy" className="aspect-video w-full object-cover" />
             </a>
           )}
-          <div className="flex items-center justify-between gap-2 px-2 py-1 text-xs text-zinc-500">
+          <div className="flex items-center justify-between gap-2 px-2 py-1 text-xs text-slate-500">
             <span className="truncate" title={`${f.originalName} · ${f.uploadedByName} · ${formatDateTime(f.createdAt)}`}>
               {f.uploadedByName} · {formatBytes(f.sizeBytes)}
             </span>
@@ -52,19 +52,19 @@ export function DocumentList({
   empty?: string;
 }) {
   const live = files.filter((f) => !f.archivedAt);
-  if (live.length === 0) return <p className="text-xs text-zinc-500">{empty}</p>;
+  if (live.length === 0) return <p className="text-xs text-slate-500">{empty}</p>;
   return (
     <ul className="space-y-1">
       {live.map((f) => (
         <li key={f.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
-          <a href={`/api/files/${f.id}`} target="_blank" rel="noopener" className="font-medium text-sky-700 hover:underline dark:text-sky-400">
+          <a href={`/api/files/${f.id}`} target="_blank" rel="noopener" className="font-medium text-sky-700 hover:underline">
             {f.kind === "pdf" ? "📄" : f.kind === "doc" ? "📝" : "🖼"} {showCategory ? `${CATEGORY_INFO[f.category].label} — ` : ""}
             {f.originalName}
           </a>
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-slate-500">
             {formatBytes(f.sizeBytes)} · {f.uploadedByName} · {formatDateTime(f.createdAt)}
           </span>
-          <a href={`/api/files/${f.id}?download`} className="text-xs text-zinc-500 hover:underline">
+          <a href={`/api/files/${f.id}?download`} className="text-xs text-slate-500 hover:underline">
             Download
           </a>
           {canRemove ? <RemoveFileButton propertyId={propertyId} fileId={f.id} /> : null}
@@ -80,15 +80,15 @@ export function ArchivedFiles({ files }: { files: StoredFile[] }) {
   if (archived.length === 0) return null;
   return (
     <details className="text-sm">
-      <summary className="cursor-pointer text-zinc-600 dark:text-zinc-400">Archived files ({archived.length})</summary>
+      <summary className="cursor-pointer text-slate-600">Archived files ({archived.length})</summary>
       <ul className="mt-2 space-y-1">
         {archived.map((f) => (
-          <li key={f.id} className="text-zinc-600 dark:text-zinc-400">
-            <a href={`/api/files/${f.id}`} target="_blank" rel="noopener" className="text-sky-700 hover:underline dark:text-sky-400">
+          <li key={f.id} className="text-slate-600">
+            <a href={`/api/files/${f.id}`} target="_blank" rel="noopener" className="text-sky-700 hover:underline">
               {CATEGORY_INFO[f.category].label}: {f.originalName}
             </a>{" "}
             <span className="text-xs">
-              uploaded by {f.uploadedByName} {formatDateTime(f.createdAt)}, archived {formatDateTime(f.archivedAt)} · sha256 {f.sha256.slice(0, 12)}…
+              uploaded by {f.uploadedByName} {formatDateTime(f.createdAt)}, archived {formatDateTime(f.archivedAt)} · {f.sha256 ? `sha256 ${f.sha256.slice(0, 12)}…` : ""}
             </span>
           </li>
         ))}

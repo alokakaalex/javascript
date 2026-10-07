@@ -10,7 +10,7 @@ export default async function NewPropertyPage() {
   return (
     <>
       <PageHeader
-        title="Upload property"
+        eyebrow="Scout a property" title="New property"
         subtitle="Step 1 of 2: property details. You'll add photos and videos next, then submit to the Expansion Manager."
       />
       <Card>

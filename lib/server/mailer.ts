@@ -16,7 +16,8 @@ export interface Email {
   to: string;
   subject: string;
   text: string;
-  attachments?: { filename: string; path: string; contentType?: string }[];
+  /** `path` for a file on disk, `href` for a link the mailer downloads. */
+  attachments?: { filename: string; path?: string; href?: string; contentType?: string }[];
 }
 
 /** Fire-and-forget: a mail outage must never fail the action that triggered it. */

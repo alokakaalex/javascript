@@ -33,21 +33,21 @@ export default function PropertyFacts({ property, role }: { property: PropertyVi
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
         {facts.map((f) => (
           <div key={f.field}>
-            <dt className="text-xs uppercase tracking-wide text-zinc-500">{f.label}</dt>
-            <dd className="mt-0.5 text-base font-medium text-zinc-900 dark:text-zinc-100">{f.render(property)}</dd>
+            <dt className="text-xs uppercase tracking-wide text-slate-500">{f.label}</dt>
+            <dd className="mt-0.5 text-base font-medium text-slate-900">{f.render(property)}</dd>
           </div>
         ))}
         {perSqft !== null ? (
           <div>
-            <dt className="text-xs uppercase tracking-wide text-zinc-500">Rent / carpet sq ft</dt>
-            <dd className="mt-0.5 text-base font-medium text-zinc-900 dark:text-zinc-100">₹{perSqft.toFixed(2)}</dd>
+            <dt className="text-xs uppercase tracking-wide text-slate-500">Rent / carpet sq ft</dt>
+            <dd className="mt-0.5 text-base font-medium text-slate-900">₹{perSqft.toFixed(2)}</dd>
           </div>
         ) : null}
       </dl>
       {fields.has("notes") && property.notes ? (
         <div>
-          <div className="text-xs uppercase tracking-wide text-zinc-500">Notes</div>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">{property.notes}</p>
+          <div className="text-xs uppercase tracking-wide text-slate-500">Notes</div>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{property.notes}</p>
         </div>
       ) : null}
     </div>

@@ -11,9 +11,9 @@ import { listUsers } from "@/lib/server/users";
 export const metadata: Metadata = { title: "Access & roles" };
 
 const STATUS_TONE = {
-  active: "text-emerald-700 dark:text-emerald-400",
-  invited: "text-amber-700 dark:text-amber-400",
-  disabled: "text-zinc-400",
+  active: "text-emerald-700",
+  invited: "text-amber-700",
+  disabled: "text-slate-400",
 };
 
 const ACTION_LABEL: Record<string, string> = {
@@ -34,8 +34,7 @@ const ACTION_LABEL: Record<string, string> = {
 
 export default async function UsersPage() {
   const admin = await requireRole("admin");
-  const users = listUsers();
-  const log = accessAudit(50);
+  const [users, log] = await Promise.all([listUsers(), accessAudit(50)]);
 
   return (
     <>
@@ -46,7 +45,7 @@ export default async function UsersPage() {
 
       <Card title="Add a person">
         <AddUserForm />
-        <p className="mt-3 text-xs text-zinc-500">
+        <p className="mt-3 text-xs text-slate-500">
           {emailEnabled()
             ? "The invite link is emailed to them and also shown here."
             : "Email isn't configured (SMTP_HOST), so copy the invite link shown after adding and send it to them."}{" "}
@@ -58,10 +57,10 @@ export default async function UsersPage() {
         <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
           {ROLES.map((r) => (
             <div key={r}>
-              <dt className="font-medium text-zinc-900 dark:text-zinc-100">
-                {ROLE_INFO[r].label} <span className="text-zinc-500">({users.filter((u) => u.role === r && u.status !== "disabled").length})</span>
+              <dt className="font-medium text-slate-900">
+                {ROLE_INFO[r].label} <span className="text-slate-500">({users.filter((u) => u.role === r && u.status !== "disabled").length})</span>
               </dt>
-              <dd className="mt-0.5 text-xs text-zinc-500">{ROLE_INFO[r].description}</dd>
+              <dd className="mt-0.5 text-xs text-slate-500">{ROLE_INFO[r].description}</dd>
             </div>
           ))}
         </dl>
@@ -69,29 +68,29 @@ export default async function UsersPage() {
 
       <Card title={`People (${users.length})`}>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-zinc-500">
+              <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
                 <th className="px-3 py-2">Person</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Last sign-in</th>
                 <th className="px-3 py-2">Role &amp; access</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
+            <tbody className="divide-y divide-slate-100">
               {users.map((u) => (
                 <tr key={u.id} className={u.status === "disabled" ? "opacity-60" : ""}>
                   <td className="px-3 py-3 align-top">
-                    <div className="font-medium text-zinc-900 dark:text-zinc-100">{u.name}</div>
-                    <div className="text-xs text-zinc-500">{u.email}</div>
+                    <div className="font-medium text-slate-900">{u.name}</div>
+                    <div className="text-xs text-slate-500">{u.email}</div>
                     {u.role === "sales" ? (
-                      <div className={`mt-0.5 text-xs font-medium ${u.salesApprover ? "text-emerald-700 dark:text-emerald-400" : "text-zinc-500"}`}>
+                      <div className={`mt-0.5 text-xs font-medium ${u.salesApprover ? "text-emerald-700" : "text-slate-500"}`}>
                         {u.salesApprover ? "✓ Sales approver" : "Sales — view only"}
                       </div>
                     ) : null}
                   </td>
                   <td className={`px-3 py-3 align-top font-medium capitalize ${STATUS_TONE[u.status]}`}>{u.status}</td>
-                  <td className="whitespace-nowrap px-3 py-3 align-top text-zinc-500">{u.lastLoginAt ? formatDateTime(u.lastLoginAt) : "Never"}</td>
+                  <td className="whitespace-nowrap px-3 py-3 align-top text-slate-500">{u.lastLoginAt ? formatDateTime(u.lastLoginAt) : "Never"}</td>
                   <td className="px-3 py-3 align-top">
                     <UserActions user={u} isSelf={u.id === admin.id} />
                   </td>
@@ -104,14 +103,14 @@ export default async function UsersPage() {
 
       <Card title="Recent access changes">
         {log.length === 0 ? (
-          <p className="text-sm text-zinc-500">No changes yet.</p>
+          <p className="text-sm text-slate-500">No changes yet.</p>
         ) : (
           <ol className="space-y-1.5 text-sm">
             {log.map((h) => (
               <li key={h.id} className="flex flex-wrap gap-x-2">
-                <time className="w-44 shrink-0 text-zinc-500">{formatDateTime(h.createdAt)}</time>
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">{h.actorName ?? "System"}</span>
-                <span className="text-zinc-600 dark:text-zinc-400">
+                <time className="w-44 shrink-0 text-slate-500">{formatDateTime(h.createdAt)}</time>
+                <span className="font-medium text-slate-800">{h.actorName ?? "System"}</span>
+                <span className="text-slate-600">
                   {ACTION_LABEL[h.action] ?? h.action} {h.details}
                 </span>
               </li>

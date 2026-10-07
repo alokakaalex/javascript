@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SetPasswordForm } from "@/components/portal/AuthForms";
+import AuthFrame from "@/components/portal/AuthFrame";
 import { Alert } from "@/components/portal/ui";
 import { ROLE_INFO } from "@/lib/expansion/roles";
 import { inspectToken } from "@/lib/server/users";
@@ -9,19 +10,19 @@ export const metadata: Metadata = { title: "Set your password", referrer: "no-re
 
 export default async function InvitePage(props: PageProps<"/invite/[token]">) {
   const { token } = await props.params;
-  const link = inspectToken(token);
+  const link = await inspectToken(token);
 
   return (
-    <main className="flex flex-1 items-center justify-center px-6 py-16">
+    <AuthFrame>
       <div className="w-full max-w-sm space-y-6">
-        <h1 className="text-center text-2xl font-semibold text-zinc-900 dark:text-zinc-100">Expansion Portal</h1>
+        <h2 className="text-2xl font-semibold text-navy-950">Set your password</h2>
         {link ? (
-          <div className="space-y-4 rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+          <div className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_8px_30px_-12px_rgba(48,51,68,0.25)]">
             <div>
-              <p className="text-sm text-zinc-700 dark:text-zinc-300">
+              <p className="text-sm text-slate-700">
                 {link.purpose === "invite" ? "Welcome" : "Hi"}, <strong>{link.user.name}</strong>.
               </p>
-              <p className="mt-1 text-sm text-zinc-500">
+              <p className="mt-1 text-sm text-slate-500">
                 {link.purpose === "invite"
                   ? `You've been given access as ${ROLE_INFO[link.user.role].label}. Choose a password for ${link.user.email}.`
                   : `Choose a new password for ${link.user.email}.`}
@@ -39,6 +40,6 @@ export default async function InvitePage(props: PageProps<"/invite/[token]">) {
           </Alert>
         )}
       </div>
-    </main>
+    </AuthFrame>
   );
 }

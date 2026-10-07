@@ -76,9 +76,9 @@ function ActionForm({
 function Field({ label, error, hint, children }: { label: string; error?: string; hint?: string; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1 text-sm">
-      <span className="font-medium text-zinc-700 dark:text-zinc-300">{label}</span>
+      <span className="font-medium text-slate-700">{label}</span>
       {children}
-      {error ? <span className="text-xs text-rose-600 dark:text-rose-400">{error}</span> : hint ? <span className="text-xs text-zinc-500">{hint}</span> : null}
+      {error ? <span className="text-xs text-rose-600">{error}</span> : hint ? <span className="text-xs text-slate-500">{hint}</span> : null}
     </label>
   );
 }
@@ -153,7 +153,7 @@ export function DecisionForm({
               className={inputClass}
             />
           </Field>
-          {disabledReason ? <p className="text-sm text-amber-700 dark:text-amber-400">{disabledReason}</p> : null}
+          {disabledReason ? <p className="text-sm text-amber-700">{disabledReason}</p> : null}
           <div className="flex flex-wrap gap-3">
             {decisions.map((d) => (
               <button
@@ -171,7 +171,7 @@ export function DecisionForm({
               </button>
             ))}
           </div>
-          <p className="text-xs text-zinc-500">Decisions are final and recorded with your name: {decisions.map((d) => DECISION_LABEL[d]).join(" / ")}.</p>
+          <p className="text-xs text-slate-500">Decisions are final and recorded with your name: {decisions.map((d) => DECISION_LABEL[d]).join(" / ")}.</p>
         </>
       )}
     </ActionForm>
@@ -185,7 +185,7 @@ export function VisitForm({ propertyId, visited, scopeOfWork }: { propertyId: nu
     <ActionForm action={saveVisit} propertyId={propertyId}>
       {(pending) => (
         <>
-          <label className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
             <input type="checkbox" name="visited" defaultChecked={visited} className="h-4 w-4" />
             Site visited
           </label>
@@ -225,7 +225,7 @@ export function OwnerForm({ propertyId, owner }: { propertyId: number; owner?: O
               <Field label="PAN number" error={e.panNumber}>
                 <input name="panNumber" defaultValue={owner?.panNumber ?? ""} placeholder="ABCDE1234F" className={`${inputClass} uppercase`} />
               </Field>
-              <label className="flex items-center gap-2 self-end pb-2 text-sm text-zinc-700 dark:text-zinc-300">
+              <label className="flex items-center gap-2 self-end pb-2 text-sm text-slate-700">
                 <input type="checkbox" name="isOrganisation" checked={org} onChange={(ev) => setOrg(ev.target.checked)} className="h-4 w-4" />
                 Owner is an organisation
               </label>
@@ -235,8 +235,8 @@ export function OwnerForm({ propertyId, owner }: { propertyId: number; owner?: O
                 </Field>
               ) : null}
             </div>
-            <fieldset className="grid gap-3 rounded-md border border-zinc-200 p-3 sm:grid-cols-4 dark:border-zinc-800">
-              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">Bank details (for rent/token payments)</legend>
+            <fieldset className="grid gap-3 rounded-md border border-slate-200 p-3 sm:grid-cols-4">
+              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Bank details (for rent/token payments)</legend>
               <Field label="Account holder" error={e.bankAccountName}>
                 <input name="bankAccountName" defaultValue={owner?.bank?.accountName ?? ""} className={inputClass} />
               </Field>
@@ -328,7 +328,7 @@ export function PaymentForm({
             <Field label="Notes (optional)">
               <input name="notes" maxLength={2000} className={inputClass} />
             </Field>
-            {!receiptReady ? <p className="text-sm text-amber-700 dark:text-amber-400">Upload the UTR receipt above first.</p> : null}
+            {!receiptReady ? <p className="text-sm text-amber-700">Upload the UTR receipt above first.</p> : null}
             <button type="submit" disabled={pending || !receiptReady} className={buttonClass.approve}>
               {pending ? "Saving…" : "Mark paid"}
             </button>
@@ -354,7 +354,7 @@ export function StampDutyRequestForm({ propertyId, calculationReady }: { propert
                 <input name="remarks" maxLength={2000} className={inputClass} placeholder="e.g. Owner wants the lease registered" />
               </Field>
             </div>
-            {!calculationReady ? <p className="text-sm text-amber-700 dark:text-amber-400">Upload the calculation PDF above first.</p> : null}
+            {!calculationReady ? <p className="text-sm text-amber-700">Upload the calculation PDF above first.</p> : null}
             <button type="submit" disabled={pending || !calculationReady} className={buttonClass.primary}>
               {pending ? "Sending…" : "Request stamp duty release"}
             </button>

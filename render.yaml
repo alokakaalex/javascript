@@ -24,6 +24,9 @@ services:
         value: /var/data
       - key: APP_URL
         sync: false
+      # Managed Postgres (Render Postgres, Neon, Supabase…).
+      - key: DATABASE_URL
+        sync: false
       - key: ADMIN_EMAIL
         sync: false
       - key: ADMIN_NAME

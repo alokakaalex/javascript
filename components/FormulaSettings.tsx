@@ -27,7 +27,7 @@ export default function FormulaSettings({ rules, onChange, onReset }: Props) {
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex items-start justify-between gap-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+      <div className="flex items-start justify-between gap-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
         <p>
           These ratios are calibrated from three real warehouse fit-outs
           (7,000 sq ft and two at 5,400 sq ft). Add data from more of your own
@@ -36,7 +36,7 @@ export default function FormulaSettings({ rules, onChange, onReset }: Props) {
         </p>
         <button
           onClick={onReset}
-          className="whitespace-nowrap rounded border border-amber-400 px-2 py-1 text-xs font-medium hover:bg-amber-100 dark:hover:bg-amber-900"
+          className="whitespace-nowrap rounded border border-amber-400 px-2 py-1 text-xs font-medium hover:bg-amber-100"
         >
           Reset to defaults
         </button>
@@ -47,7 +47,7 @@ export default function FormulaSettings({ rules, onChange, onReset }: Props) {
         if (items.length === 0) return null;
         return (
           <div key={category}>
-            <h3 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+            <h3 className="mb-3 text-sm font-semibold text-slate-900">
               {category}
             </h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -58,7 +58,7 @@ export default function FormulaSettings({ rules, onChange, onReset }: Props) {
                 return (
                   <div key={item.id} className="flex flex-col gap-1">
                     {isAllowance ? (
-                      <p className="text-sm text-zinc-500">
+                      <p className="text-sm text-slate-500">
                         {item.name}: priced per sq ft directly (see Calculator
                         tab unit cost).
                       </p>
@@ -83,7 +83,7 @@ export default function FormulaSettings({ rules, onChange, onReset }: Props) {
                       />
                     )}
                     {item.note ? (
-                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                      <p className="text-xs text-amber-700">
                         {item.note}
                       </p>
                     ) : null}

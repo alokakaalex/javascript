@@ -7,7 +7,7 @@ import { ROLE_INFO, type Role } from "@/lib/expansion/roles";
 import type { User } from "@/lib/expansion/types";
 import { config } from "./config";
 import { randomToken, sha256 } from "./crypto";
-import { db, now } from "./db";
+import { now, one, run } from "./db";
 import { ensureDemo } from "./demo";
 import { toUser, type UserRow } from "./users";
 
@@ -41,11 +41,16 @@ export async function startSession(userId: string, userAgent: string | null) {
     return;
   }
   const token = randomToken();
-  db()
-    .prepare("INSERT INTO sessions (token_hash, user_id, expires_at, created_at, user_agent) VALUES (?, ?, ?, ?, ?)")
-    .run(sha256(token), userId, expires.toISOString(), now(), userAgent?.slice(0, 300) ?? null);
+  await run(
+    "INSERT INTO sessions (token_hash, user_id, expires_at, created_at, user_agent) VALUES (?, ?, ?, ?, ?)",
+    sha256(token),
+    userId,
+    expires.toISOString(),
+    now(),
+    userAgent?.slice(0, 300) ?? null,
+  );
   // Opportunistic cleanup of expired sessions.
-  db().prepare("DELETE FROM sessions WHERE expires_at < ?").run(now());
+  await run("DELETE FROM sessions WHERE expires_at < ?", now());
 
   const store = await cookies();
   store.set(COOKIE, token, {
@@ -60,7 +65,7 @@ export async function startSession(userId: string, userAgent: string | null) {
 export async function endSession() {
   const store = await cookies();
   const token = store.get(COOKIE)?.value;
-  if (token) db().prepare("DELETE FROM sessions WHERE token_hash = ?").run(sha256(token));
+  if (token && !config.demoMode) await run("DELETE FROM sessions WHERE token_hash = ?", sha256(token));
   store.delete(COOKIE);
 }
 
@@ -71,16 +76,16 @@ export const currentUser = cache(async (): Promise<User | null> => {
   if (!token) return null;
   if (config.demoMode) {
     const id = demoUserId(token);
-    const row = id ? db().prepare("SELECT * FROM users WHERE id = ? AND status = 'active'").get(id) : undefined;
-    return row ? toUser(row as unknown as UserRow) : null;
+    const row = id ? await one<UserRow>("SELECT * FROM users WHERE id = ? AND status = 'active'", id) : undefined;
+    return row ? toUser(row) : null;
   }
-  const row = db()
-    .prepare(
-      `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-       WHERE s.token_hash = ? AND s.expires_at > ? AND u.status = 'active'`,
-    )
-    .get(sha256(token), now());
-  return row ? toUser(row as unknown as UserRow) : null;
+  const row = await one<UserRow>(
+    `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
+     WHERE s.token_hash = ? AND s.expires_at > ? AND u.status = 'active'`,
+    sha256(token),
+    now(),
+  );
+  return row ? toUser(row) : null;
 });
 
 export async function requireUser(): Promise<User> {

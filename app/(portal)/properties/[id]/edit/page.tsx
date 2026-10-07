@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Edit property" };
 export default async function EditProperty(props: PageProps<"/properties/[id]/edit">) {
   const user = await requireRole("real_estate");
   const { id } = await props.params;
-  const property = getProperty(user, Number(id));
+  const property = await getProperty(user, Number(id));
   if (!property) notFound();
   if (!isEditable(property.state)) redirect(`/properties/${property.id}`);
   return (

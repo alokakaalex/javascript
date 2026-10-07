@@ -12,11 +12,11 @@ vi.mock("./mailer", () => ({
   sendEmail: (e: { to: string; subject: string; attachments?: unknown[] }) => sent.push(e),
 }));
 
-const { db, resetDbForTests } = await import("./db");
+const { run, resetDbForTests } = await import("./db");
 const { listNotifications } = await import("./notifications");
 const { createProperty, getProperty, listProperties, actionQueue, submitProperty, updateProperty } = await import("./properties");
 const pipeline = await import("./pipeline");
-const { saveUpload, archiveFile, viewableFile } = await import("./files");
+const { storeBytes, archiveFile, viewableFile, beginUpload, uploadChunk, completeUpload } = await import("./files");
 const { runBackup, listBackups } = await import("./backups");
 const { updateSettings } = await import("./settings");
 const { authenticate, inviteUser, redeemToken, changeRole, setUserEnabled } = await import("./users");
@@ -59,23 +59,27 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2
 const PDF = new TextEncoder().encode("%PDF-1.7\n1 0 obj\n");
 
 let seq = 0;
-function makeUser(role: Role, name: string = role, salesApprover = role === "sales"): User {
+async function makeUser(role: Role, name: string = role, salesApprover = role === "sales"): Promise<User> {
   const id = `user-${++seq}`;
-  db()
-    .prepare("INSERT INTO users (id, email, name, role, status, sales_approver, created_at) VALUES (?, ?, ?, ?, 'active', ?, ?)")
-    .run(id, `${id}@example.com`, name, role, salesApprover ? 1 : 0, new Date().toISOString());
+  await run(
+    "INSERT INTO users (id, email, name, role, status, sales_approver, created_at) VALUES (?, ?, ?, ?, 'active', ?, ?)",
+    id,
+    `${id}@example.com`,
+    name,
+    role,
+    salesApprover ? 1 : 0,
+    new Date().toISOString(),
+  );
   return { id, email: `${id}@example.com`, name, role, status: "active", salesApprover, lastLoginAt: null, createdAt: "" };
 }
 
 function upload(user: User, propertyId: number, category: FileCategory, opts: { ownerId?: number; pdf?: boolean } = {}) {
-  const bytes = opts.pdf ? PDF : PNG;
-  return saveUpload(user, propertyId, {
+  return storeBytes(user, propertyId, {
     category,
     ownerId: opts.ownerId ?? null,
     mime: opts.pdf ? "application/pdf" : "image/png",
-    originalName: `${category}.${opts.pdf ? "pdf" : "png"}`,
-    declaredSize: bytes.length,
-    body: new Blob([bytes]).stream(),
+    name: `${category}.${opts.pdf ? "pdf" : "png"}`,
+    bytes: opts.pdf ? PDF : PNG,
   });
 }
 
@@ -86,123 +90,123 @@ const payment = (utr: string, amount = 100000) =>
 let admin: User, em: User, re: User, bl: User, sales: User, sales2: User, ops: User, founder: User, finance: User;
 const dataDir = path.resolve(".test-data");
 
-beforeEach(() => {
-  resetDbForTests();
+beforeEach(async () => {
+  await resetDbForTests();
   fs.rmSync(dataDir, { recursive: true, force: true });
   sent.length = 0;
-  admin = makeUser("admin", "Asha Admin");
-  em = makeUser("expansion_manager", "Esha EM");
-  re = makeUser("real_estate", "Ravi RE");
-  bl = makeUser("business", "Bina BL");
-  sales = makeUser("sales", "Sonal Sales");
-  sales2 = makeUser("sales", "Sam Sales");
-  ops = makeUser("ops", "Om Ops");
-  founder = makeUser("founder", "Farhan Founder");
-  finance = makeUser("finance", "Fiona Finance");
+  admin = await makeUser("admin", "Asha Admin");
+  em = await makeUser("expansion_manager", "Esha EM");
+  re = await makeUser("real_estate", "Ravi RE");
+  bl = await makeUser("business", "Bina BL");
+  sales = await makeUser("sales", "Sonal Sales");
+  sales2 = await makeUser("sales", "Sam Sales");
+  ops = await makeUser("ops", "Om Ops");
+  founder = await makeUser("founder", "Farhan Founder");
+  finance = await makeUser("finance", "Fiona Finance");
 });
 
 async function submitted(): Promise<number> {
-  const id = createProperty(re, INPUT);
+  const id = await createProperty(re, INPUT);
   await upload(re, id, "property_media");
-  submitProperty(re, id);
+  await submitProperty(re, id);
   return id;
 }
 
 async function toDocuments(id: number) {
-  pipeline.decide(em, id, "approved", "Good location");
-  pipeline.decide(bl, id, "approved", "Rent fits budget");
-  pipeline.decide(sales, id, "approved", "Strong catchment");
+  await pipeline.decide(em, id, "approved", "Good location");
+  await pipeline.decide(bl, id, "approved", "Rent fits budget");
+  await pipeline.decide(sales, id, "approved", "Strong catchment");
   await upload(ops, id, "ops_media");
-  pipeline.saveVisit(ops, id, { visited: true, scopeOfWork: "Repaint, 2 new shutters, 63A 3-phase connection" });
-  pipeline.decide(ops, id, "approved", "Structure sound");
+  await pipeline.saveVisit(ops, id, { visited: true, scopeOfWork: "Repaint, 2 new shutters, 63A 3-phase connection" });
+  await pipeline.decide(ops, id, "approved", "Structure sound");
 }
 
 async function uploadDocuments(id: number) {
-  const ownerId = pipeline.addOwner(re, id, OWNER);
+  const ownerId = await pipeline.addOwner(re, id, OWNER);
   for (const c of ["aadhaar_front", "aadhaar_back", "pan_card"] as const) await upload(re, id, c, { ownerId });
   for (const c of ["electricity_bill", "lease_deed", "property_tax_receipt"] as const) await upload(re, id, c, { pdf: true });
   return ownerId;
 }
 
-const stageOf = (id: number) => {
-  const p = getProperty(admin, id)!;
+const stageOf = async (id: number) => {
+  const p = (await getProperty(admin, id))!;
   return `${p.state}:${p.stage}`;
 };
 
 describe("full pipeline", () => {
   it("runs from scouting to balance payment, notifying the right people at each step", async () => {
     const id = await submitted();
-    expect(stageOf(id)).toBe("active:em_review");
-    expect(listNotifications(em.id)[0].title).toMatch(/New property/);
-    expect(getProperty(bl, id)).toBeNull();
+    expect(await stageOf(id)).toBe("active:em_review");
+    expect((await listNotifications(em.id))[0].title).toMatch(/New property/);
+    expect(await getProperty(bl, id)).toBeNull();
 
-    pipeline.decide(em, id, "approved", "Good location");
-    expect(stageOf(id)).toBe("active:bl_review");
-    expect(listNotifications(re.id)[0].title).toMatch(/Expansion Manager \(Esha EM\) approved/);
-    expect(listNotifications(bl.id)[0].title).toMatch(/Awaiting your review/);
+    await pipeline.decide(em, id, "approved", "Good location");
+    expect(await stageOf(id)).toBe("active:bl_review");
+    expect((await listNotifications(re.id))[0].title).toMatch(/Expansion Manager \(Esha EM\) approved/);
+    expect((await listNotifications(bl.id))[0].title).toMatch(/Awaiting your review/);
 
-    pipeline.decide(bl, id, "hold", "Waiting for Q3 budget");
-    expect(stageOf(id)).toBe("on_hold:bl_review");
-    expect(listNotifications(em.id)[0].title).toMatch(/put on hold/);
-    expect(listNotifications(re.id)[0].title).toMatch(/put on hold/);
-    pipeline.decide(bl, id, "approved", "Budget cleared");
-    expect(stageOf(id)).toBe("active:sales_review");
-    expect(listNotifications(sales.id)).toHaveLength(1);
-    expect(listNotifications(sales2.id)).toHaveLength(1);
+    await pipeline.decide(bl, id, "hold", "Waiting for Q3 budget");
+    expect(await stageOf(id)).toBe("on_hold:bl_review");
+    expect((await listNotifications(em.id))[0].title).toMatch(/put on hold/);
+    expect((await listNotifications(re.id))[0].title).toMatch(/put on hold/);
+    await pipeline.decide(bl, id, "approved", "Budget cleared");
+    expect(await stageOf(id)).toBe("active:sales_review");
+    expect(await listNotifications(sales.id)).toHaveLength(1);
+    expect(await listNotifications(sales2.id)).toHaveLength(1);
 
-    pipeline.decide(sales2, id, "approved", "Good catchment");
-    expect(stageOf(id)).toBe("active:ops_review");
-    expect(listNotifications(ops.id)[0].title).toMatch(/Site visit needed/);
+    await pipeline.decide(sales2, id, "approved", "Good catchment");
+    expect(await stageOf(id)).toBe("active:ops_review");
+    expect((await listNotifications(ops.id))[0].title).toMatch(/Site visit needed/);
 
     await upload(ops, id, "ops_media");
-    expect(() => pipeline.decide(ops, id, "approved", "ok fine")).toThrow(/Mark the property as visited/);
-    pipeline.saveVisit(ops, id, { visited: true, scopeOfWork: "Repaint; 63A connection" });
-    expect(listNotifications(em.id)[0].title).toMatch(/Ops visited/);
-    pipeline.decide(ops, id, "approved", "Structure sound");
-    expect(stageOf(id)).toBe("active:documents");
-    expect(listNotifications(re.id)[0].title).toMatch(/upload documents/);
+    await expect(pipeline.decide(ops, id, "approved", "ok fine")).rejects.toThrow(/Mark the property as visited/);
+    await pipeline.saveVisit(ops, id, { visited: true, scopeOfWork: "Repaint; 63A connection" });
+    expect((await listNotifications(em.id))[0].title).toMatch(/Ops visited/);
+    await pipeline.decide(ops, id, "approved", "Structure sound");
+    expect(await stageOf(id)).toBe("active:documents");
+    expect((await listNotifications(re.id))[0].title).toMatch(/upload documents/);
 
-    expect(() => pipeline.completeDocuments(re, id)).toThrow(/Still missing/);
+    await expect(pipeline.completeDocuments(re, id)).rejects.toThrow(/Still missing/);
     await uploadDocuments(id);
-    pipeline.completeDocuments(re, id);
-    expect(stageOf(id)).toBe("active:loi");
-    expect(listNotifications(em.id)[0].title).toMatch(/Documents uploaded/);
+    await pipeline.completeDocuments(re, id);
+    expect(await stageOf(id)).toBe("active:loi");
+    expect((await listNotifications(em.id))[0].title).toMatch(/Documents uploaded/);
 
-    expect(() => pipeline.sendLoi(em, id)).toThrow(/Upload the LOI first/);
+    await expect(pipeline.sendLoi(em, id)).rejects.toThrow(/Upload the LOI first/);
     await upload(em, id, "loi", { pdf: true });
-    const loi = pipeline.sendLoi(em, id);
+    const loi = await pipeline.sendLoi(em, id);
     expect(loi.emailedTo).toEqual(["rk.sharma@example.com"]);
     const loiMail = sent.find((m) => m.to === "rk.sharma@example.com")!;
     expect(loiMail.subject).toMatch(/Letter of Intent/);
     expect(loiMail.attachments).toHaveLength(1);
-    expect(stageOf(id)).toBe("active:signed_loi");
-    expect(listNotifications(re.id)[0].title).toMatch(/LOI issued/);
+    expect(await stageOf(id)).toBe("active:signed_loi");
+    expect((await listNotifications(re.id))[0].title).toMatch(/LOI issued/);
 
     await upload(em, id, "signed_loi", { pdf: true });
-    pipeline.confirmSignedLoi(em, id);
-    expect(stageOf(id)).toBe("active:founder_review");
-    expect(listNotifications(founder.id)[0].title).toMatch(/Approval needed/);
+    await pipeline.confirmSignedLoi(em, id);
+    expect(await stageOf(id)).toBe("active:founder_review");
+    expect((await listNotifications(founder.id))[0].title).toMatch(/Approval needed/);
 
-    pipeline.decide(founder, id, "approved", "Go ahead");
-    expect(stageOf(id)).toBe("active:token_payment");
-    expect(listNotifications(finance.id)[0].title).toMatch(/Release token/);
+    await pipeline.decide(founder, id, "approved", "Go ahead");
+    expect(await stageOf(id)).toBe("active:token_payment");
+    expect((await listNotifications(finance.id))[0].title).toMatch(/Release token/);
 
-    expect(() => pipeline.recordPayment(finance, id, "token", payment("UTR0000000001"))).toThrow(/Upload the token payment/i);
+    await expect(pipeline.recordPayment(finance, id, "token", payment("UTR0000000001"))).rejects.toThrow(/Upload the token payment/i);
     await upload(finance, id, "token_receipt", { pdf: true });
-    pipeline.recordPayment(finance, id, "token", payment("UTR0000000001", 50000));
-    expect(stageOf(id)).toBe("active:agreement");
-    expect(listNotifications(founder.id)[0].title).toMatch(/Token paid/);
-    expect(listNotifications(em.id)[0].title).toMatch(/Token paid/);
+    await pipeline.recordPayment(finance, id, "token", payment("UTR0000000001", 50000));
+    expect(await stageOf(id)).toBe("active:agreement");
+    expect((await listNotifications(founder.id))[0].title).toMatch(/Token paid/);
+    expect((await listNotifications(em.id))[0].title).toMatch(/Token paid/);
 
     await upload(em, id, "agreement", { pdf: true });
-    pipeline.confirmAgreement(em, id);
-    expect(stageOf(id)).toBe("active:balance_payment");
-    expect(listNotifications(finance.id)[0].title).toMatch(/Release balance/);
+    await pipeline.confirmAgreement(em, id);
+    expect(await stageOf(id)).toBe("active:balance_payment");
+    expect((await listNotifications(finance.id))[0].title).toMatch(/Release balance/);
 
     await upload(finance, id, "balance_receipt", { pdf: true });
-    expect(() => pipeline.recordPayment(finance, id, "balance", payment("UTR0000000001"))).toThrow(/already recorded/);
-    pipeline.recordPayment(finance, id, "balance", payment("UTR0000000002", 690000));
-    const done = getProperty(admin, id)!;
+    await expect(pipeline.recordPayment(finance, id, "balance", payment("UTR0000000001"))).rejects.toThrow(/already recorded/);
+    await pipeline.recordPayment(finance, id, "balance", payment("UTR0000000002", 690000));
+    const done = (await getProperty(admin, id))!;
     expect(done.state).toBe("completed");
     expect(done.completedAt).not.toBeNull();
     expect(done.payments!.map((p) => [p.kind, p.amount])).toEqual([
@@ -222,113 +226,113 @@ describe("full pipeline", () => {
   it("handles stamp duty as a side request to finance and the founder", async () => {
     const id = await submitted();
     await toDocuments(id);
-    expect(() => pipeline.requestStampDuty(em, id, { amount: 42000, remarks: "" })).toThrow(/once the Founder has approved/);
+    await expect(pipeline.requestStampDuty(em, id, { amount: 42000, remarks: "" })).rejects.toThrow(/once the Founder has approved/);
     await uploadDocuments(id);
-    pipeline.completeDocuments(re, id);
+    await pipeline.completeDocuments(re, id);
     await upload(em, id, "loi", { pdf: true });
-    pipeline.sendLoi(em, id);
+    await pipeline.sendLoi(em, id);
     await upload(em, id, "signed_loi", { pdf: true });
-    pipeline.confirmSignedLoi(em, id);
-    pipeline.decide(founder, id, "approved", "Go ahead");
+    await pipeline.confirmSignedLoi(em, id);
+    await pipeline.decide(founder, id, "approved", "Go ahead");
 
-    expect(() => pipeline.requestStampDuty(em, id, { amount: 42000, remarks: "" })).toThrow(/calculation PDF/);
+    await expect(pipeline.requestStampDuty(em, id, { amount: 42000, remarks: "" })).rejects.toThrow(/calculation PDF/);
     await upload(em, id, "stamp_duty_calculation", { pdf: true });
-    pipeline.requestStampDuty(em, id, { amount: 42000, remarks: "Owner wants a registered lease" });
-    expect(listNotifications(finance.id)[0].title).toMatch(/Stamp duty requested/);
-    expect(listNotifications(founder.id)[0].title).toMatch(/Stamp duty requested/);
-    const request = getProperty(finance, id)!.payments!.find((p) => p.kind === "stamp_duty")!;
+    await pipeline.requestStampDuty(em, id, { amount: 42000, remarks: "Owner wants a registered lease" });
+    expect((await listNotifications(finance.id))[0].title).toMatch(/Stamp duty requested/);
+    expect((await listNotifications(founder.id))[0].title).toMatch(/Stamp duty requested/);
+    const request = (await getProperty(finance, id))!.payments!.find((p) => p.kind === "stamp_duty")!;
     expect(request.status).toBe("requested");
-    expect(actionQueue(finance).map((p) => p.id)).toContain(id);
+    expect((await actionQueue(finance)).map((p) => p.id)).toContain(id);
 
     await upload(finance, id, "stamp_duty_receipt", { pdf: true });
-    pipeline.payStampDuty(finance, request.id, payment("STAMPUTR12345", 42000));
-    expect(listNotifications(em.id)[0].title).toMatch(/Stamp duty paid/);
-    expect(() => pipeline.payStampDuty(finance, request.id, payment("STAMPUTR99999"))).toThrow(/already paid/);
+    await pipeline.payStampDuty(finance, request.id, payment("STAMPUTR12345", 42000));
+    expect((await listNotifications(em.id))[0].title).toMatch(/Stamp duty paid/);
+    await expect(pipeline.payStampDuty(finance, request.id, payment("STAMPUTR99999"))).rejects.toThrow(/already paid/);
     // The main pipeline is unaffected.
-    expect(stageOf(id)).toBe("active:token_payment");
+    expect(await stageOf(id)).toBe("active:token_payment");
   });
 });
 
 describe("rejections, holds and votes", () => {
   it("lets the real estate manager revise and resubmit after a rejection", async () => {
     const id = await submitted();
-    pipeline.decide(em, id, "approved", "ok go");
-    pipeline.decide(bl, id, "rejected", "Rent too high");
-    expect(stageOf(id)).toBe("rejected:bl_review");
-    expect(listNotifications(re.id)[0].title).toMatch(/rejected/);
-    expect(listNotifications(em.id)[0].title).toMatch(/rejected/);
-    updateProperty(re, id, { ...INPUT, askingRent: 160000 });
-    submitProperty(re, id);
-    const p = getProperty(admin, id)!;
+    await pipeline.decide(em, id, "approved", "ok go");
+    await pipeline.decide(bl, id, "rejected", "Rent too high");
+    expect(await stageOf(id)).toBe("rejected:bl_review");
+    expect((await listNotifications(re.id))[0].title).toMatch(/rejected/);
+    expect((await listNotifications(em.id))[0].title).toMatch(/rejected/);
+    await updateProperty(re, id, { ...INPUT, askingRent: 160000 });
+    await submitProperty(re, id);
+    const p = (await getProperty(admin, id))!;
     expect(`${p.state}:${p.stage}:${p.round}`).toBe("active:em_review:2");
     // Business keeps access to what it reviewed before.
-    expect(getProperty(bl, id)).not.toBeNull();
+    expect(await getProperty(bl, id)).not.toBeNull();
   });
 
   it("requires remarks, the right role and the right stage", async () => {
     const id = await submitted();
-    expect(() => pipeline.decide(em, id, "approved", " ")).toThrow(/Remarks are required/);
-    expect(() => pipeline.decide(em, id, "hold", "not now")).toThrow(/can't hold/);
-    expect(() => pipeline.decide(bl, id, "approved", "ok go")).toThrow(/not found|isn't waiting/);
-    expect(() => pipeline.decide(re, id, "approved", "ok go")).toThrow(/doesn't review/);
-    pipeline.decide(em, id, "approved", "ok go");
-    expect(() => pipeline.decide(em, id, "rejected", "changed mind")).toThrow(/isn't waiting/);
+    await expect(pipeline.decide(em, id, "approved", " ")).rejects.toThrow(/Remarks are required/);
+    await expect(pipeline.decide(em, id, "hold", "not now")).rejects.toThrow(/can't hold/);
+    await expect(pipeline.decide(bl, id, "approved", "ok go")).rejects.toThrow(/not found|isn't waiting/);
+    await expect(pipeline.decide(re, id, "approved", "ok go")).rejects.toThrow(/doesn't review/);
+    await pipeline.decide(em, id, "approved", "ok go");
+    await expect(pipeline.decide(em, id, "rejected", "changed mind")).rejects.toThrow(/isn't waiting/);
   });
 
   it("counts sales votes against the configured thresholds", async () => {
-    updateSettings(admin, { salesApprovalsRequired: 2, salesRejectionsRequired: 2 });
+    await updateSettings(admin, { salesApprovalsRequired: 2, salesRejectionsRequired: 2 });
     const id = await submitted();
-    pipeline.decide(em, id, "approved", "ok go");
-    pipeline.decide(bl, id, "approved", "ok go");
-    pipeline.decide(sales, id, "approved", "Good market");
-    expect(stageOf(id)).toBe("active:sales_review");
-    expect(listNotifications(re.id)[0].body).toMatch(/1 approve, 0 reject/);
-    expect(() => pipeline.decide(sales, id, "rejected", "again")).toThrow(/already given/);
-    expect(actionQueue(sales)).toHaveLength(0);
-    expect(actionQueue(sales2).map((p) => p.id)).toEqual([id]);
-    pipeline.decide(sales2, id, "approved", "Agree");
-    expect(stageOf(id)).toBe("active:ops_review");
+    await pipeline.decide(em, id, "approved", "ok go");
+    await pipeline.decide(bl, id, "approved", "ok go");
+    await pipeline.decide(sales, id, "approved", "Good market");
+    expect(await stageOf(id)).toBe("active:sales_review");
+    expect((await listNotifications(re.id))[0].body).toMatch(/1 approve, 0 reject/);
+    await expect(pipeline.decide(sales, id, "rejected", "again")).rejects.toThrow(/already given/);
+    expect(await actionQueue(sales)).toHaveLength(0);
+    expect((await actionQueue(sales2)).map((p) => p.id)).toEqual([id]);
+    await pipeline.decide(sales2, id, "approved", "Agree");
+    expect(await stageOf(id)).toBe("active:ops_review");
   });
 
   it("lets only designated sales approvers decide; the rest of sales can view", async () => {
-    const viewer = makeUser("sales", "Vik Viewer", false);
+    const viewer = await makeUser("sales", "Vik Viewer", false);
     const id = await submitted();
-    pipeline.decide(em, id, "approved", "ok go");
-    pipeline.decide(bl, id, "approved", "ok go");
-    expect(listNotifications(viewer.id)[0].title).toMatch(/For your review/);
-    expect(listNotifications(sales.id)[0].title).toMatch(/Awaiting your decision/);
-    expect(getProperty(viewer, id)!.files).toHaveLength(1);
-    expect(actionQueue(viewer)).toHaveLength(0);
-    expect(() => pipeline.decide(viewer, id, "approved", "Looks good")).toThrow(/view access/);
-    pipeline.decide(sales, id, "approved", "Looks good");
-    expect(stageOf(id)).toBe("active:ops_review");
+    await pipeline.decide(em, id, "approved", "ok go");
+    await pipeline.decide(bl, id, "approved", "ok go");
+    expect((await listNotifications(viewer.id))[0].title).toMatch(/For your review/);
+    expect((await listNotifications(sales.id))[0].title).toMatch(/Awaiting your decision/);
+    expect((await getProperty(viewer, id))!.files).toHaveLength(1);
+    expect(await actionQueue(viewer)).toHaveLength(0);
+    await expect(pipeline.decide(viewer, id, "approved", "Looks good")).rejects.toThrow(/view access/);
+    await pipeline.decide(sales, id, "approved", "Looks good");
+    expect(await stageOf(id)).toBe("active:ops_review");
   });
 
   it("lets the access manager raise a stamp duty request too", async () => {
     const id = await submitted();
-    db().prepare("UPDATE properties SET furthest_stage = 8, stage = 'token_payment' WHERE id = ?").run(id);
+    await run("UPDATE properties SET furthest_stage = 8, stage = 'token_payment' WHERE id = ?", id);
     await upload(admin, id, "stamp_duty_calculation", { pdf: true });
-    pipeline.requestStampDuty(admin, id, { amount: 30000, remarks: "" });
-    expect(listNotifications(finance.id)[0].title).toMatch(/Stamp duty requested/);
-    expect(() => pipeline.requestStampDuty(re, id, { amount: 1, remarks: "" })).toThrow(/Your role/);
+    await pipeline.requestStampDuty(admin, id, { amount: 30000, remarks: "" });
+    expect((await listNotifications(finance.id))[0].title).toMatch(/Stamp duty requested/);
+    await expect(pipeline.requestStampDuty(re, id, { amount: 1, remarks: "" })).rejects.toThrow(/Your role/);
   });
 
   it("locks editing while in review", async () => {
-    const id = createProperty(re, INPUT);
-    expect(() => submitProperty(re, id)).toThrow(/at least one photo or video/);
+    const id = await createProperty(re, INPUT);
+    await expect(submitProperty(re, id)).rejects.toThrow(/at least one photo or video/);
     await upload(re, id, "property_media");
-    submitProperty(re, id);
-    expect(() => updateProperty(re, id, INPUT)).toThrow(/in review/);
+    await submitProperty(re, id);
+    await expect(updateProperty(re, id, INPUT)).rejects.toThrow(/in review/);
     await expect(upload(re, id, "property_media")).rejects.toThrow(/can't upload/);
-    expect(() => createProperty(sales, INPUT)).toThrow(/Your role/);
+    await expect(createProperty(sales, INPUT)).rejects.toThrow(/Your role/);
   });
 });
 
 describe("what each role can see", () => {
   it("gives business leaders only store name, area, rent, deposit, rent-free days and advance", async () => {
     const id = await submitted();
-    pipeline.decide(em, id, "approved", "ok go");
-    const p = getProperty(bl, id)!;
+    await pipeline.decide(em, id, "approved", "ok go");
+    const p = (await getProperty(bl, id))!;
     expect([p.storeName, p.totalAreaSqft, p.carpetAreaSqft, p.askingRent, p.securityDeposit, p.rentFreeDays, p.advanceRent]).toEqual([
       "Rohini Sec-7 Dark Store", 6500, 6000, 185000, 555000, 30, 185000,
     ]);
@@ -343,82 +347,109 @@ describe("what each role can see", () => {
     await toDocuments(id);
     await uploadDocuments(id);
     for (const viewer of [sales, ops]) {
-      const p = getProperty(viewer, id)!;
+      const p = (await getProperty(viewer, id))!;
       expect(p.structureType).toBe("rcc");
       expect(p.files.map((f) => f.category).sort()).toEqual(["ops_media", "property_media"]);
       expect(p.owners).toBeNull();
       expect(p.visit?.scopeOfWork).toMatch(/Repaint/);
     }
-    const kyc = getProperty(admin, id)!.files.find((f) => f.category === "aadhaar_front")!;
-    expect(viewableFile(sales, kyc.id)).toBeNull();
-    expect(viewableFile(founder, kyc.id)).not.toBeNull();
-    expect(viewableFile(re, kyc.id)).not.toBeNull();
+    const kyc = (await getProperty(admin, id))!.files.find((f) => f.category === "aadhaar_front")!;
+    expect(await viewableFile(sales, kyc.id)).toBeNull();
+    expect(await viewableFile(founder, kyc.id)).not.toBeNull();
+    expect(await viewableFile(re, kyc.id)).not.toBeNull();
   });
 
   it("gives finance the deal summary, signed LOI, agreement and bank details, but not KYC", async () => {
     const id = await submitted();
     await toDocuments(id);
     await uploadDocuments(id);
-    pipeline.completeDocuments(re, id);
-    expect(getProperty(finance, id)).toBeNull();
+    await pipeline.completeDocuments(re, id);
+    expect(await getProperty(finance, id)).toBeNull();
     await upload(em, id, "loi", { pdf: true });
-    pipeline.sendLoi(em, id);
+    await pipeline.sendLoi(em, id);
     await upload(em, id, "signed_loi", { pdf: true });
-    pipeline.confirmSignedLoi(em, id);
-    pipeline.decide(founder, id, "approved", "Go ahead");
-    const p = getProperty(finance, id)!;
+    await pipeline.confirmSignedLoi(em, id);
+    await pipeline.decide(founder, id, "approved", "Go ahead");
+    const p = (await getProperty(finance, id))!;
     expect([p.totalAreaSqft, p.advanceRent, p.securityDeposit]).toEqual([6500, 185000, 555000]);
     expect(p.askingRent).toBeNull();
     expect(p.files.map((f) => f.category)).toEqual(["signed_loi"]);
     expect(p.owners![0].bank).toMatchObject({ accountNumber: "123456789012", ifsc: "HDFC0001234" });
     expect(p.decisions).toHaveLength(5);
     // Business leaders never see bank details.
-    expect(getProperty(bl, id)!.owners).toBeNull();
+    expect((await getProperty(bl, id))!.owners).toBeNull();
   });
 
   it("shows real estate managers only their own properties", async () => {
     const id = await submitted();
-    const other = makeUser("real_estate", "Other RE");
-    expect(getProperty(other, id)).toBeNull();
-    expect(listProperties(other)).toHaveLength(0);
-    expect(listProperties(em)).toHaveLength(1);
+    const other = await makeUser("real_estate", "Other RE");
+    expect(await getProperty(other, id)).toBeNull();
+    expect(await listProperties(other)).toHaveLength(0);
+    expect(await listProperties(em)).toHaveLength(1);
   });
 });
 
 describe("nothing is ever lost", () => {
   it("archives files instead of deleting them, and the database refuses deletes", async () => {
-    const id = createProperty(re, INPUT);
+    const id = await createProperty(re, INPUT);
     const { id: fileId } = await upload(re, id, "property_media");
-    archiveFile(re, fileId);
-    expect(getProperty(re, id)!.files).toHaveLength(0);
-    const archived = getProperty(admin, id)!.files;
+    await archiveFile(re, fileId);
+    expect((await getProperty(re, id))!.files).toHaveLength(0);
+    const archived = (await getProperty(admin, id))!.files;
     expect(archived).toHaveLength(1);
     expect(archived[0].archivedAt).not.toBeNull();
     expect(fs.existsSync(path.join(dataDir, "uploads", String(id), fileId))).toBe(true);
     expect(archived[0].sha256).toMatch(/^[0-9a-f]{64}$/);
 
-    expect(() => db().prepare("DELETE FROM properties WHERE id = ?").run(id)).toThrow(/never deleted/);
-    expect(() => db().prepare("DELETE FROM files").run()).toThrow(/never deleted/);
-    expect(() => db().prepare("DELETE FROM audit_log").run()).toThrow(/never deleted/);
+    await expect(run("DELETE FROM properties WHERE id = ?", id)).rejects.toThrow(/never deleted/);
+    await expect(run("DELETE FROM files")).rejects.toThrow(/never deleted/);
+    await expect(run("DELETE FROM audit_log")).rejects.toThrow(/never deleted/);
     await upload(re, id, "property_media");
-    submitProperty(re, id);
-    pipeline.decide(em, id, "approved", "ok go");
-    expect(() => db().prepare("UPDATE decisions SET remarks = 'x'").run()).toThrow(/never changed/);
+    await submitProperty(re, id);
+    await pipeline.decide(em, id, "approved", "ok go");
+    await expect(run("UPDATE decisions SET remarks = 'x'")).rejects.toThrow(/never changed/);
   });
 
   it("rejects files whose contents don't match their type", async () => {
-    const id = createProperty(re, INPUT);
+    const id = await createProperty(re, INPUT);
+    // A script disguised as a photo, sent through the normal chunked upload.
+    const evil = new TextEncoder().encode("<script>alert(1)</script>");
+    const plan = await beginUpload(re, { propertyId: id, category: "property_media", ownerId: null, name: "evil.png", mime: "image/png", size: evil.length });
+    await uploadChunk(re, plan.uploadId, 0, new Blob([evil]).stream());
+    await expect(completeUpload(re, plan.uploadId)).rejects.toThrow(/don't match/);
+    expect((await getProperty(re, id))!.files).toHaveLength(0);
+    await expect(upload(re, id, "property_media", { pdf: true })).rejects.toThrow(/Only photos/);
     await expect(
-      saveUpload(re, id, {
-        category: "property_media",
-        ownerId: null,
-        mime: "image/png",
-        originalName: "evil.png",
-        declaredSize: 20,
-        body: new Blob(["<script>alert(1)</script>"]).stream(),
-      }),
-    ).rejects.toThrow(/don't match/);
-    await expect(upload(re, id, "property_media", { pdf: true })).rejects.toThrow(/Only JPEG/);
+      beginUpload(re, { propertyId: id, category: "property_media", ownerId: null, name: "x.exe", mime: "application/x-msdownload", size: 10 }),
+    ).rejects.toThrow(/Only photos/);
+  });
+
+  it("accepts a large video in chunks of any number, and resumes after a retried chunk", async () => {
+    const id = await createProperty(re, INPUT);
+    // A 2.5 MB "video" (MP4 header + filler) sent in 1 MB chunks (UPLOAD_CHUNK_MB=1 in tests).
+    const size = 2.5 * 1024 * 1024;
+    const bytes = new Uint8Array(size);
+    bytes.set([0, 0, 0, 0x18, ...new TextEncoder().encode("ftypmp42")]);
+    for (let i = 16; i < size; i++) bytes[i] = i % 251;
+    const plan = await beginUpload(re, { propertyId: id, category: "property_media", ownerId: null, name: "walkthrough.mp4", mime: "video/mp4", size });
+    expect(plan.mode).toBe("local");
+    const chunk = plan.mode === "local" ? plan.chunkBytes : 0;
+    let offset = 0;
+    while (offset < size) {
+      const part = bytes.subarray(offset, offset + chunk);
+      offset = await uploadChunk(re, plan.uploadId, offset, new Blob([part]).stream());
+      // Re-sending a chunk the server already has is harmless.
+      expect(await uploadChunk(re, plan.uploadId, 0, new Blob([part]).stream())).toBe(offset);
+    }
+    const { id: fileId } = await completeUpload(re, plan.uploadId);
+    const stored = (await getProperty(re, id))!.files.find((f) => f.id === fileId)!;
+    expect(stored).toMatchObject({ kind: "video", sizeBytes: size, mime: "video/mp4" });
+    const { createHash } = await import("node:crypto");
+    expect(stored.sha256).toBe(createHash("sha256").update(bytes).digest("hex"));
+    await expect(uploadChunk(re, plan.uploadId, 0, new Blob([bytes]).stream())).rejects.toThrow(/already finished/);
+    // Someone else can't continue another person's upload.
+    const plan2 = await beginUpload(re, { propertyId: id, category: "property_media", ownerId: null, name: "a.mp4", mime: "video/mp4", size: 100 });
+    await expect(uploadChunk(admin, plan2.uploadId, 0, new Blob([bytes.subarray(0, 100)]).stream())).rejects.toThrow(/not found/);
   });
 
   it("writes a verifiable database backup", async () => {
@@ -426,28 +457,28 @@ describe("nothing is ever lost", () => {
     const b = await runBackup("manual");
     expect(b.error).toBeNull();
     expect(b.sizeBytes).toBeGreaterThan(0);
-    expect(listBackups()[0].id).toBe(b.id);
-    const { DatabaseSync } = await import("node:sqlite");
-    const copy = new DatabaseSync(path.join(dataDir, "backups", b.fileName));
-    expect((copy.prepare("SELECT store_name FROM properties WHERE id = ?").get(id) as { store_name: string }).store_name).toBe(INPUT.storeName);
-    copy.close();
+    expect((await listBackups())[0].id).toBe(b.id);
+    const { gunzipSync } = await import("node:zlib");
+    const snapshot = JSON.parse(gunzipSync(fs.readFileSync(path.join(dataDir, "backups", b.fileName))).toString());
+    expect(snapshot.tables.properties.find((p: { id: number }) => p.id === id).store_name).toBe(INPUT.storeName);
+    expect(snapshot.tables.files.length).toBeGreaterThan(0);
   });
 });
 
 describe("access management", () => {
   it("invites a user who sets a password and signs in", async () => {
-    const { user, link } = inviteUser(admin, { email: "New.Person@Example.com", name: "New Person", role: "finance" });
-    expect(inviteUser(admin, { email: "s@example.com", name: "S", role: "sales", salesApprover: true }).user.salesApprover).toBe(true);
+    const { user, link } = await inviteUser(admin, { email: "New.Person@Example.com", name: "New Person", role: "finance" });
+    expect((await inviteUser(admin, { email: "s@example.com", name: "S", role: "sales", salesApprover: true })).user.salesApprover).toBe(true);
     await redeemToken(link.url.split("/invite/")[1], "correct horse 42");
     expect((await authenticate("new.person@example.com", "correct horse 42")).role).toBe("finance");
     expect(user.status).toBe("invited");
   });
 
   it("keeps at least one admin and blocks disabled users", async () => {
-    expect(() => changeRole(admin, admin.id, "sales")).toThrow(/own role/);
-    const { user, link } = inviteUser(admin, { email: "d@example.com", name: "D", role: "sales" });
+    await expect(changeRole(admin, admin.id, "sales")).rejects.toThrow(/own role/);
+    const { user, link } = await inviteUser(admin, { email: "d@example.com", name: "D", role: "sales" });
     await redeemToken(link.url.split("/invite/")[1], "good password 1");
-    setUserEnabled(admin, user.id, false);
+    await setUserEnabled(admin, user.id, false);
     await expect(authenticate(user.email, "good password 1")).rejects.toThrow(/disabled/);
   });
 });

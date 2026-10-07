@@ -2,7 +2,7 @@ import "server-only";
 import type { Role } from "@/lib/expansion/roles";
 import type { Notification } from "@/lib/expansion/types";
 import { config } from "./config";
-import { db, now } from "./db";
+import { all, now, one, run } from "./db";
 import { sendEmail } from "./mailer";
 
 export interface NewNotification {
@@ -17,14 +17,18 @@ interface Recipient {
   email: string;
 }
 
-function deliver(recipients: Recipient[], n: NewNotification) {
-  const insert = db().prepare(
-    `INSERT INTO notifications (user_id, property_id, title, body, link, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  );
+async function deliver(recipients: Recipient[], n: NewNotification) {
   const at = now();
   for (const r of recipients) {
-    insert.run(r.id, n.propertyId, n.title, n.body, n.link, at);
+    await run(
+      `INSERT INTO notifications (user_id, property_id, title, body, link, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      r.id,
+      n.propertyId,
+      n.title,
+      n.body,
+      n.link,
+      at,
+    );
     sendEmail({
       to: r.email,
       subject: n.title,
@@ -33,19 +37,14 @@ function deliver(recipients: Recipient[], n: NewNotification) {
   }
 }
 
-export function notifyUser(userId: string, n: NewNotification) {
-  const user = db()
-    .prepare("SELECT id, email FROM users WHERE id = ? AND status = 'active'")
-    .get(userId) as Recipient | undefined;
-  if (user) deliver([user], n);
+export async function notifyUser(userId: string, n: NewNotification) {
+  const user = await one<Recipient>("SELECT id, email FROM users WHERE id = ? AND status = 'active'", userId);
+  if (user) await deliver([user], n);
 }
 
 /** Notifies every active member of a team. */
-export function notifyRole(role: Role, n: NewNotification) {
-  const users = db()
-    .prepare("SELECT id, email FROM users WHERE role = ? AND status = 'active'")
-    .all(role) as unknown as Recipient[];
-  deliver(users, n);
+export async function notifyRole(role: Role, n: NewNotification) {
+  await deliver(await all<Recipient>("SELECT id, email FROM users WHERE role = ? AND status = 'active'", role), n);
 }
 
 interface NotificationRow {
@@ -58,13 +57,13 @@ interface NotificationRow {
   created_at: string;
 }
 
-export function listNotifications(userId: string, limit = 100): Notification[] {
-  const rows = db()
-    .prepare(
-      `SELECT id, property_id, title, body, link, read_at, created_at
-       FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT ?`,
-    )
-    .all(userId, limit) as unknown as NotificationRow[];
+export async function listNotifications(userId: string, limit = 100): Promise<Notification[]> {
+  const rows = await all<NotificationRow>(
+    `SELECT id, property_id, title, body, link, read_at, created_at
+     FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT ?`,
+    userId,
+    limit,
+  );
   return rows.map((r) => ({
     id: r.id,
     propertyId: r.property_id,
@@ -76,21 +75,14 @@ export function listNotifications(userId: string, limit = 100): Notification[] {
   }));
 }
 
-export function unreadCount(userId: string): number {
-  const row = db()
-    .prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL")
-    .get(userId) as { n: number };
-  return row.n;
+export async function unreadCount(userId: string): Promise<number> {
+  return (await one<{ n: number }>("SELECT COUNT(*)::int AS n FROM notifications WHERE user_id = ? AND read_at IS NULL", userId))!.n;
 }
 
-export function markRead(userId: string, notificationId?: number) {
+export async function markRead(userId: string, notificationId?: number) {
   if (notificationId === undefined) {
-    db()
-      .prepare("UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL")
-      .run(now(), userId);
+    await run("UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL", now(), userId);
   } else {
-    db()
-      .prepare("UPDATE notifications SET read_at = ? WHERE user_id = ? AND id = ? AND read_at IS NULL")
-      .run(now(), userId, notificationId);
+    await run("UPDATE notifications SET read_at = ? WHERE user_id = ? AND id = ? AND read_at IS NULL", now(), userId, notificationId);
   }
 }

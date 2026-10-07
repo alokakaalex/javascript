@@ -22,7 +22,7 @@ export async function GET() {
     ...reviews.flatMap((s) => [`${STAGE_INFO[s].label}`, `${STAGE_INFO[s].label} remarks`]),
     "Token paid", "Token UTR", "Balance paid", "Balance UTR", "Stamp duty paid", "Stamp duty UTR", "Completed",
   ];
-  const rows = listProperties(user).map((p) => {
+  const rows = (await listProperties(user)).map((p) => {
     const last = (s: string) => [...p.decisions].reverse().find((d) => d.round === p.round && d.stage === s);
     const pay = (k: string) => p.payments?.filter((x) => x.kind === k && x.status === "paid") ?? [];
     return [

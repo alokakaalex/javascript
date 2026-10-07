@@ -19,9 +19,9 @@ function field(formData: FormData, name: string): string {
   return typeof v === "string" ? v : "";
 }
 
-async function guarded(fn: () => AdminFormState): Promise<AdminFormState> {
+async function guarded(fn: () => Promise<AdminFormState>): Promise<AdminFormState> {
   try {
-    const result = fn();
+    const result = await fn();
     revalidatePath("/admin/users");
     return result;
   } catch (error) {
@@ -34,8 +34,8 @@ export async function addUser(_: AdminFormState, formData: FormData): Promise<Ad
   const actor = await requireRole("admin");
   const role = field(formData, "role");
   if (!isRole(role)) return { error: "Choose a role." };
-  return guarded(() => {
-    const { user, link } = inviteUser(actor, {
+  return guarded(async () => {
+    const { user, link } = await inviteUser(actor, {
       email: field(formData, "email"),
       name: field(formData, "name"),
       role,
@@ -49,17 +49,17 @@ export async function updateUser(_: AdminFormState, formData: FormData): Promise
   const actor = await requireRole("admin");
   const userId = field(formData, "userId");
   const intent = field(formData, "intent");
-  return guarded(() => {
+  return guarded(async () => {
     if (intent === "role") {
       const role = field(formData, "role");
       if (!isRole(role)) return { error: "Choose a role." };
-      changeRole(actor, userId, role);
+      await changeRole(actor, userId, role);
     } else if (intent === "disable" || intent === "enable") {
-      setUserEnabled(actor, userId, intent === "enable");
+      await setUserEnabled(actor, userId, intent === "enable");
     } else if (intent === "approver_on" || intent === "approver_off") {
-      setSalesApprover(actor, userId, intent === "approver_on");
+      await setSalesApprover(actor, userId, intent === "approver_on");
     } else if (intent === "link") {
-      const link = issueAccessLink(actor, userId);
+      const link = await issueAccessLink(actor, userId);
       return { link: { email: field(formData, "email"), ...link } };
     }
     return {};
@@ -78,7 +78,7 @@ export async function saveSettings(_: SystemState, formData: FormData): Promise<
   if (![approvals, rejections].every((n) => Number.isInteger(n) && n >= 1 && n <= 50)) {
     return { error: "Enter whole numbers between 1 and 50." };
   }
-  updateSettings(actor, { salesApprovalsRequired: approvals, salesRejectionsRequired: rejections });
+  await updateSettings(actor, { salesApprovalsRequired: approvals, salesRejectionsRequired: rejections });
   revalidatePath("/admin/system");
   return { success: "Settings saved." };
 }
@@ -87,7 +87,7 @@ export async function backupNow(): Promise<SystemState> {
   await requireRole("admin");
   const b = await runBackup("manual");
   revalidatePath("/admin/system");
-  return b.error ? { error: b.error } : { success: `Backup ${b.fileName} saved${b.remoteCopy ? " and copied to the bucket" : ""}.` };
+  return b.error ? { error: b.error } : { success: `Backup ${b.fileName} saved to the ${b.location}.` };
 }
 
 export async function verifyStorage(): Promise<SystemState> {
@@ -95,5 +95,5 @@ export async function verifyStorage(): Promise<SystemState> {
   const r = await verifyFiles();
   return r.problems.length
     ? { error: `${r.problems.length} of ${r.checked} files have problems: ${r.problems.slice(0, 10).join("; ")}` }
-    : { success: `All ${r.checked} files are present and unchanged (SHA-256 verified).` };
+    : { success: `All ${r.checked} files are present and complete.` };
 }

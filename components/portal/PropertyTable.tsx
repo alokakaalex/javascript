@@ -3,19 +3,33 @@ import { formatDate, formatINR, formatNumber } from "@/lib/expansion/format";
 import type { Role } from "@/lib/expansion/roles";
 import type { PropertyView } from "@/lib/expansion/types";
 import { FIELD_VISIBILITY } from "@/lib/expansion/workflow";
+import { Icon } from "./Icons";
 import { EmptyState, StatusBadge } from "./ui";
+
+function Thumb({ p }: { p: PropertyView }) {
+  const photo = p.files.find((f) => f.category === "property_media" && f.kind === "image" && !f.archivedAt && !f.mime.includes("hei"));
+  return photo ? (
+    // Authenticated file route: next/image's optimizer can't forward the session cookie.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={`/api/files/${photo.id}`} alt="" loading="lazy" className="h-11 w-14 shrink-0 rounded-lg object-cover ring-1 ring-slate-200" />
+  ) : (
+    <span className="flex h-11 w-14 shrink-0 items-center justify-center rounded-lg bg-navy-50 text-navy-400">
+      <Icon name="building" />
+    </span>
+  );
+}
 
 export default function PropertyTable({ properties, role, empty }: { properties: PropertyView[]; role: Role; empty: string }) {
   if (properties.length === 0) return <EmptyState>{empty}</EmptyState>;
   const fields = FIELD_VISIBILITY[role];
-  const th = "px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500";
-  const td = "px-3 py-3 align-top";
+  const th = "px-4 py-3 text-left text-[0.7rem] font-semibold uppercase tracking-wider text-slate-500";
+  const td = "px-4 py-3 align-middle";
   const money = (["askingRent", "securityDeposit", "advanceRent"] as const).filter((k) => fields.has(k));
   const moneyLabel = { askingRent: "Rent / mo", securityDeposit: "Deposit", advanceRent: "Advance" };
   return (
-    <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-      <table className="min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
-        <thead className="bg-zinc-50 dark:bg-zinc-900">
+    <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(48,51,68,0.06)]">
+      <table className="min-w-full divide-y divide-slate-100 text-sm">
+        <thead className="bg-navy-50/60">
           <tr>
             <th className={th}>Property</th>
             <th className={th}>Status</th>
@@ -29,30 +43,33 @@ export default function PropertyTable({ properties, role, empty }: { properties:
             <th className={th}>Updated</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
+        <tbody className="divide-y divide-slate-100">
           {properties.map((p) => (
-            <tr key={p.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900">
+            <tr key={p.id} className="transition-colors hover:bg-brand-50/40">
               <td className={td}>
-                <Link href={`/properties/${p.id}`} className="font-medium text-zinc-900 hover:underline dark:text-zinc-100">
-                  {p.storeName}
+                <Link href={`/properties/${p.id}`} className="group flex items-center gap-3">
+                  <Thumb p={p} />
+                  <span className="min-w-0">
+                    <span className="block font-semibold text-navy-900 group-hover:text-brand-600">{p.storeName}</span>
+                    <span className="block max-w-xs truncate text-xs text-slate-500">
+                      {p.code}
+                      {p.round > 1 ? ` · round ${p.round}` : ""}
+                      {p.address ? ` · ${p.address}` : ""}
+                    </span>
+                  </span>
                 </Link>
-                <div className="text-xs text-zinc-500">
-                  {p.code}
-                  {p.round > 1 ? ` · round ${p.round}` : ""}
-                  {p.address ? ` · ${p.address}` : ""}
-                </div>
               </td>
               <td className={td}>
                 <StatusBadge state={p.state} stage={p.stage} />
               </td>
-              <td className={`${td} whitespace-nowrap text-right tabular-nums`}>{formatNumber(p.totalAreaSqft, " sq ft")}</td>
+              <td className={`${td} whitespace-nowrap text-right tabular-nums text-slate-700`}>{formatNumber(p.totalAreaSqft, " sq ft")}</td>
               {money.map((k) => (
-                <td key={k} className={`${td} whitespace-nowrap text-right tabular-nums`}>
+                <td key={k} className={`${td} whitespace-nowrap text-right tabular-nums text-slate-700`}>
                   {formatINR(p[k])}
                 </td>
               ))}
-              <td className={`${td} whitespace-nowrap text-zinc-600 dark:text-zinc-400`}>{p.createdByName}</td>
-              <td className={`${td} whitespace-nowrap text-zinc-500`}>{formatDate(p.updatedAt)}</td>
+              <td className={`${td} whitespace-nowrap text-slate-600`}>{p.createdByName}</td>
+              <td className={`${td} whitespace-nowrap text-slate-500`}>{formatDate(p.updatedAt)}</td>
             </tr>
           ))}
         </tbody>

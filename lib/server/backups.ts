@@ -1,40 +1,45 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
-import { pushRemote, remoteEnabled } from "./blobStore";
+import { gzipSync } from "node:zlib";
 import { config } from "./config";
-import { db, now } from "./db";
-import { syncPendingFiles } from "./files";
+import { all, databaseKind, now, one, run } from "./db";
+import * as storage from "./storage";
 
-// Automatic database backups. Every BACKUP_INTERVAL_HOURS a consistent
-// snapshot of the database is written to BACKUP_DIR (default
-// DATA_DIR/backups) and, if configured, to the S3 bucket. Local snapshots
-// beyond BACKUP_KEEP are pruned; bucket copies are never deleted by the app
-// (use bucket lifecycle rules if you want them to expire).
+// Automatic backups. Every BACKUP_INTERVAL_HOURS (and daily from Vercel
+// Cron) a snapshot of every table is written as compressed JSON to the
+// bucket (or BACKUP_DIR without one). These sit on top of your database
+// provider's own backups (Neon/Supabase keep point-in-time history), so a
+// copy of every record also lives outside the database. Uploaded files are
+// already in the bucket. The app never deletes a backup.
+
+const TABLES = [
+  "users",
+  "properties",
+  "owners",
+  "payments",
+  "files",
+  "decisions",
+  "ops_visits",
+  "notifications",
+  "audit_log",
+  "settings",
+  "backups",
+];
 
 export interface BackupRecord {
   id: number;
   fileName: string;
   sizeBytes: number;
   sha256: string;
-  remoteCopy: boolean;
+  location: string;
   trigger: string;
   error: string | null;
   createdAt: string;
 }
 
-function sha256File(file: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const hash = createHash("sha256");
-    fs.createReadStream(file).on("data", (c) => hash.update(c)).on("end", () => resolve(hash.digest("hex"))).on("error", reject);
-  });
-}
-
 let running: Promise<BackupRecord> | null = null;
 
-export function runBackup(trigger: "scheduled" | "manual" | "startup"): Promise<BackupRecord> {
-  // One at a time; a second request waits for the one in progress.
+export function runBackup(trigger: "scheduled" | "manual" | "startup" | "cron"): Promise<BackupRecord> {
   running ??= doBackup(trigger).finally(() => {
     running = null;
   });
@@ -42,103 +47,93 @@ export function runBackup(trigger: "scheduled" | "manual" | "startup"): Promise<
 }
 
 async function doBackup(trigger: string): Promise<BackupRecord> {
-  fs.mkdirSync(config.backupsDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const fileName = `expansion-${stamp}.db`;
-  const file = path.join(config.backupsDir, fileName);
-  let error: string | null = null;
+  const fileName = `expansion-${stamp}.json.gz`;
+  const kind = storage.storageKind();
   let size = 0;
   let sha = "";
-  let remote = false;
+  let error: string | null = null;
   try {
-    // VACUUM INTO writes a consistent, compacted copy while the app keeps running.
-    db().exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
-    size = fs.statSync(file).size;
-    sha = await sha256File(file);
-    if (remoteEnabled()) {
-      remote = await pushRemote(`backups/${fileName}`, "application/vnd.sqlite3", sha);
-      if (!remote) error = "Saved locally, but copying to the bucket failed (will retry next backup).";
-      await syncPendingFiles();
-    }
-    prune();
+    const snapshot: Record<string, unknown> = { createdAt: now(), database: await databaseKind(), tables: {} };
+    for (const t of TABLES) (snapshot.tables as Record<string, unknown>)[t] = await all(`SELECT * FROM ${t}`);
+    const bytes = gzipSync(Buffer.from(JSON.stringify(snapshot)));
+    size = bytes.length;
+    sha = createHash("sha256").update(bytes).digest("hex");
+    await storage.putBytes(kind, `backups/${fileName}`, bytes, "application/gzip");
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
     console.error("[backup] failed", e);
   }
-  const r = db()
-    .prepare("INSERT INTO backups (file_name, size_bytes, sha256, remote_copy, trigger, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .run(fileName, size, sha, remote ? 1 : 0, trigger, error, now());
-  return listBackups(1).find((b) => b.id === Number(r.lastInsertRowid))!;
+  const r = await one<{ id: number }>(
+    "INSERT INTO backups (file_name, size_bytes, sha256, location, trigger, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
+    fileName,
+    size,
+    sha,
+    kind === "s3" ? "bucket" : "server disk",
+    trigger,
+    error,
+    now(),
+  );
+  return (await listBackups(1)).find((b) => b.id === r!.id)!;
 }
 
-function prune() {
-  const files = fs
-    .readdirSync(config.backupsDir)
-    .filter((f) => /^expansion-.*\.db$/.test(f))
-    .sort();
-  for (const f of files.slice(0, Math.max(0, files.length - config.backupKeepLocal))) {
-    fs.rmSync(path.join(config.backupsDir, f), { force: true });
-  }
-}
-
-export function listBackups(limit = 20): BackupRecord[] {
-  const rows = db().prepare("SELECT * FROM backups ORDER BY id DESC LIMIT ?").all(limit) as {
+export async function listBackups(limit = 20): Promise<BackupRecord[]> {
+  const rows = await all<{
     id: number;
     file_name: string;
     size_bytes: number;
     sha256: string;
-    remote_copy: number;
+    location: string;
     trigger: string;
     error: string | null;
     created_at: string;
-  }[];
+  }>("SELECT * FROM backups ORDER BY id DESC LIMIT ?", limit);
   return rows.map((r) => ({
     id: r.id,
     fileName: r.file_name,
     sizeBytes: r.size_bytes,
     sha256: r.sha256,
-    remoteCopy: r.remote_copy === 1,
+    location: r.location,
     trigger: r.trigger,
     error: r.error,
     createdAt: r.created_at,
   }));
 }
 
-export function storageStatus() {
-  const files = db().prepare("SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes, SUM(remote_copy = 0) AS pending FROM files").get() as {
-    n: number;
-    bytes: number;
-    pending: number | null;
-  };
+export async function storageStatus() {
+  const files = (await one<{ n: number; bytes: number }>("SELECT COUNT(*)::int AS n, COALESCE(SUM(size_bytes), 0)::float8 AS bytes FROM files"))!;
   return {
     files: files.n,
     bytes: files.bytes,
-    pendingRemote: remoteEnabled() ? (files.pending ?? 0) : null,
-    remoteEnabled: remoteEnabled(),
+    storage: storage.storageKind(),
     bucket: config.s3 ? `${config.s3.bucket}/${config.s3.prefix}` : null,
+    database: await databaseKind(),
     backupsDir: config.backupsDir,
     intervalHours: config.backupIntervalHours,
   };
 }
 
 /** True when there's been no successful backup for over two intervals. */
-export function backupIsStale(): boolean {
-  const ok = db().prepare("SELECT created_at FROM backups WHERE error IS NULL ORDER BY id DESC LIMIT 1").get() as { created_at: string } | undefined;
-  return !ok || Date.now() - Date.parse(ok.created_at) > (config.backupIntervalHours * 2 + 1) * 3_600_000;
+export async function backupIsStale(): Promise<boolean> {
+  const ok = await one<{ created_at: string }>("SELECT created_at FROM backups WHERE error IS NULL ORDER BY id DESC LIMIT 1");
+  return !ok || Date.now() - Date.parse(ok.created_at) > (Math.max(config.backupIntervalHours, 24) * 2 + 1) * 3_600_000;
 }
 
-// --- Scheduler ------------------------------------------------------------------
+// --- Scheduler (long-running servers; Vercel uses /api/cron/backup) -----------------------
 
 const globalForJobs = globalThis as unknown as { __expansionJobs?: NodeJS.Timeout };
 
-/** Starts the periodic backup (once per process). Takes a backup now if the last one is older than the interval. */
 export function startBackgroundJobs() {
-  if (globalForJobs.__expansionJobs || process.env.VITEST) return;
+  if (globalForJobs.__expansionJobs || process.env.VITEST || process.env.VERCEL) return;
   const intervalMs = config.backupIntervalHours * 3_600_000;
-  const tick = () => {
-    const last = listBackups(1)[0];
-    if (!last || Date.now() - Date.parse(last.createdAt) >= intervalMs - 60_000) {
-      runBackup(last ? "scheduled" : "startup").catch((e) => console.error("[backup] failed", e));
+  const tick = async () => {
+    try {
+      const last = (await listBackups(1))[0];
+      if (!last || Date.now() - Date.parse(last.createdAt) >= intervalMs - 60_000) await runBackup(last ? "scheduled" : "startup");
+      // Uploads abandoned for over a day are marked so they don't linger.
+      await run("UPDATE uploads SET completed_at = ? WHERE completed_at IS NULL AND created_at < ?", `expired ${now()}`, new Date(Date.now() - 86_400_000).toISOString());
+    } catch (e) {
+      console.error("[backup] scheduler", e);
     }
   };
   globalForJobs.__expansionJobs = setInterval(tick, 10 * 60_000);

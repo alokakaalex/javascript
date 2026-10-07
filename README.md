@@ -1,12 +1,16 @@
-# Expansion Portal
+# Expansion OS — fairdeal.market
 
-An in-house platform that runs the expansion pipeline end to end: a real
-estate manager scouts a property, it's approved by the Expansion Manager,
-Business Leaders, Sales and Ops, the owner's documents and the LOI are
-collected, the Founder gives final approval, and Finance releases the
-token, the balance and any stamp duty — with every document, decision and
-payment stored permanently and visible to the right people. The warehouse
-electrical asset calculator lives at `/calculator` in the same app.
+fairdeal.market's in-house platform for opening new stores. A real estate
+manager scouts a property; the Expansion Manager, Business Leaders, Sales,
+Ops and the Founder approve it; owner documents, the LOI and the agreement
+are collected; and Finance releases the token, balance and stamp duty —
+with every photo, video, document, decision and payment stored permanently
+and shown only to the people who should see it. The warehouse electrical
+asset calculator lives at `/calculator`.
+
+**Stack:** Next.js · PostgreSQL (managed Postgres in production, embedded
+PGlite for local/demo) · S3-compatible object storage (Cloudflare R2, AWS
+S3…) for files of any size.
 
 ## The pipeline
 
@@ -55,36 +59,33 @@ once it has reached them.
 
 ## How data is kept safe ("never lose it")
 
-1. **Nothing is deleted.** The database itself refuses to delete properties,
-   owners, files, decisions, payments, users or audit entries (SQLite
-   triggers), and decisions and audit entries can't be edited. Removing or
-   replacing a document *archives* it: it disappears from normal views but
-   stays in storage and is listed under "Archived files" for the access
-   manager, Expansion Manager and Founder.
-2. **Every file is fingerprinted.** Each upload's SHA-256 is recorded;
-   *Backups & settings → Verify all files* re-reads every file and checks it.
-   Uploads are also checked to really be the type they claim (PDF, image,
-   video, .docx).
-3. **Off-site copy of every file.** With an S3-compatible bucket configured
-   (AWS S3, Cloudflare R2, Backblaze B2, Wasabi, MinIO…), every file is copied
-   there as it's uploaded. If the server's copy is ever lost, it's restored
-   from the bucket automatically the next time someone opens it. Failed
-   copies are retried with every backup.
-4. **Automatic database backups** every `BACKUP_INTERVAL_HOURS` (default 6)
-   to `BACKUP_DIR` and the bucket. The last `BACKUP_KEEP` (default 60) are
-   kept locally; the app never deletes bucket copies.
-5. **Audit log** of every action, shown on each property and on Access &
-   roles.
+1. **Records live in PostgreSQL.** In production, `DATABASE_URL` points at a
+   managed Postgres (Neon, Supabase, AWS RDS…), which keeps its own
+   point-in-time backups. Without it, the app runs an embedded Postgres
+   (PGlite) under `DATA_DIR` — fine for development and the demo.
+2. **Nothing is deleted.** The database itself refuses to delete properties,
+   owners, files, decisions, payments, users or audit entries, and refuses
+   edits to decisions and the audit log (PostgreSQL triggers). Removing or
+   replacing a document *archives* it: it leaves normal views but stays in
+   storage, listed under "Archived files" for the access manager, Expansion
+   Manager and Founder.
+3. **Files of any size go to a bucket.** With `S3_*` set, browsers upload
+   photos, videos and documents straight to the bucket in parts (8 MB+ each,
+   3 at a time, retried automatically if the network drops) — no size limit
+   and nothing passes through the app server. Downloads use short-lived
+   signed links. Without a bucket, files are sent to the server in chunks
+   and kept under `DATA_DIR/uploads` (also no size limit).
+4. **Every file is checked.** Only photos, videos, PDFs (and .docx for
+   LOI/agreements) are accepted, and the file's first bytes must match its
+   type. Server-stored files are SHA-256 fingerprinted; *Data & backups →
+   Verify all files* re-checks everything.
+5. **Automatic snapshots.** Every `BACKUP_INTERVAL_HOURS` (default 6) on a
+   server, and daily via Vercel Cron, a compressed JSON snapshot of every
+   table is written to the bucket (or `BACKUP_DIR`), on top of your
+   database provider's own backups.
+6. **Audit log** of every action, on each property and on People & roles.
 
-For the strongest protection, turn on **versioning** (and ideally object
-lock) on the bucket, so even a mistaken overwrite can be undone, and keep
-the bucket in a different account/region from the server.
-
-**Restoring the database** from a backup: stop the app, copy the backup
-file (from `BACKUP_DIR` or the bucket's `backups/` folder) to
-`DATA_DIR/expansion.db`, delete `expansion.db-wal` and `expansion.db-shm`
-if present, and start the app. Uploaded files are restored from the bucket
-on demand.
+For the strongest protection turn on **versioning** for the bucket.
 
 ## Access management
 
@@ -98,34 +99,18 @@ on demand.
   least one active access manager. Five wrong passwords lock an account for
   15 minutes.
 
-## Setup
+## Local development
 
-Requires Node.js 22.13+ (it uses Node's built-in SQLite driver, so there's
-no separate database server).
+Requires Node.js 22.13+.
 
 ```bash
 npm install
-cp .env.example .env.local   # set ADMIN_EMAIL, ADMIN_INITIAL_PASSWORD, APP_URL, and S3_* for off-site copies
-npm run dev                  # http://localhost:3000
+cp .env.example .env.local   # ADMIN_EMAIL / ADMIN_INITIAL_PASSWORD at minimum
+npm run dev                  # http://localhost:3000 — embedded Postgres + local files
 ```
 
-On first start the access manager from `ADMIN_EMAIL` /
-`ADMIN_INITIAL_PASSWORD` is created. Sign in, change the password under
-**Account**, then add your team under **Access & roles**.
-
-| Variable | Purpose |
-|---|---|
-| `APP_URL` | Public URL, used in invite links and emails |
-| `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_INITIAL_PASSWORD` | First access manager (created once) |
-| `DATA_DIR` | Database and uploaded files (default `./data`) |
-| `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PREFIX`, `S3_FORCE_PATH_STYLE` | Off-site copy of every file and backup (strongly recommended) |
-| `BACKUP_DIR`, `BACKUP_INTERVAL_HOURS` (6), `BACKUP_KEEP` (60) | Database backups; point `BACKUP_DIR` at a second disk if you have one |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Email for invites, notifications and sending the LOI to landowners. Without it everything works in-app, and LOIs are downloaded and sent by hand |
-| `MAX_IMAGE_MB` (25), `MAX_VIDEO_MB` (500), `MAX_DOCUMENT_MB` (25), `MAX_FILES_PER_PROPERTY` (300) | Upload limits |
-| `SESSION_DAYS` (7), `INVITE_DAYS` (7) | Sign-in and invite link lifetimes |
-
-Node prints an `ExperimentalWarning` for SQLite at startup; it's harmless
-(`NODE_OPTIONS=--disable-warning=ExperimentalWarning` silences it).
+Set `DEMO_MODE=true` for the demo (below). `npm test` runs on the embedded
+Postgres; set `DATABASE_URL` to run it against a real one.
 
 ## Demo environment (for walkthroughs)
 
@@ -138,100 +123,75 @@ demo:
 - eight sample properties seeded at different stages (new, rejected, on
   hold, awaiting Sales, awaiting documents, awaiting the Founder, awaiting
   the agreement with stamp duty requested, and fully completed);
-- an amber banner saying data resets, and uploads capped at 4 MB (Vercel's
-  request limit).
+- a banner saying data resets.
 
-Vercel's disk is temporary, so anything added in the demo disappears when
-Vercel recycles the server. Use it to show the flow, never for real
-documents; the portal refuses to run on Vercel outside demo mode.
+On Vercel without a database the demo uses a temporary embedded database,
+so anything added disappears when Vercel recycles the server. Attach a
+database and bucket (below) for real use; the demo then switches off.
 
 ## Going live
 
-It needs a long-running Node server with a **persistent disk** and HTTPS.
-Serverless hosts like Vercel have no persistent disk and won't work.
+You need three things, all with free tiers: a **Postgres database**, an
+**S3-compatible bucket**, and somewhere to run the app. The quickest route
+uses the Vercel project this repo is already connected to.
 
-### 1. Create the off-site bucket (do this first)
+### 1. Database — Neon via Vercel (2 minutes)
 
-Cloudflare R2 is the simplest and has no download fees; AWS S3 in
-`ap-south-1` (Mumbai) works equally well.
+Vercel → your project → **Storage → Create Database → Neon (Postgres)** →
+connect it to the project. Vercel adds `DATABASE_URL` / `POSTGRES_URL`
+automatically. The tables are created on first start; the demo switches off
+as soon as a database is attached.
 
-- **R2:** Cloudflare dashboard → R2 → Create bucket (e.g.
-  `fairdeal-expansion-portal`) → Manage R2 API tokens → create a token with
-  *Object Read & Write* on that bucket. Note the access key ID, secret and
-  the S3 endpoint `https://<account-id>.r2.cloudflarestorage.com`. Set
-  `S3_REGION=auto`.
-- **AWS S3:** create the bucket with **Versioning enabled**, then an IAM
-  user with `s3:PutObject`, `s3:GetObject` and `s3:ListBucket` on it. Leave
-  `S3_ENDPOINT` empty.
+### 2. File storage — Cloudflare R2 (5 minutes)
 
-### 2. Email (for invites, notifications and LOIs)
+1. Cloudflare dashboard → **R2 → Create bucket** (e.g. `fairdeal-expansion`).
+2. Bucket → **Settings → CORS policy**, paste (with your real URL):
+   ```json
+   [{ "AllowedOrigins": ["https://YOUR-APP-URL"], "AllowedMethods": ["PUT", "GET", "HEAD"],
+      "AllowedHeaders": ["*"], "ExposeHeaders": ["ETag"], "MaxAgeSeconds": 3600 }]
+   ```
+   (The app also tries to set this itself if its key has permission.)
+3. **R2 → Manage API tokens → Create token** with *Object Read & Write* on
+   the bucket. Note the access key ID, secret, and the S3 endpoint
+   `https://<account-id>.r2.cloudflarestorage.com`.
 
-Any SMTP account works. For Google Workspace: create (or pick) a mailbox
-such as `expansion@yourcompany.com`, turn on 2-step verification, create an
-*App password*, and use `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`,
-`SMTP_USER`/`SMTP_FROM` = that address, `SMTP_PASS` = the app password.
+(AWS S3 works the same: bucket with versioning + the CORS rule above + an
+IAM key with Get/Put/List; leave `S3_ENDPOINT` empty, set `S3_REGION`.)
 
-### 3a. Deploy on Render (recommended, ~10 minutes)
+### 3. Settings (Vercel → Settings → Environment Variables)
 
-`render.yaml` in this repo describes the service, including a 20 GB
-persistent disk, the health check and automatic deploys.
+| Variable | Value |
+|---|---|
+| `APP_URL` | Your site URL, e.g. `https://expansion.fairdeal.market` |
+| `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_INITIAL_PASSWORD` | The first access manager (created once) |
+| `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION` (`auto` for R2), `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | From step 2 |
+| `CRON_SECRET` | Any long random string (protects the daily backup job) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Optional — emails invites, alerts and LOIs (e.g. a Google Workspace app password) |
 
-1. render.com → **New → Blueprint** → connect GitHub → pick this repo and
-   the default branch.
-2. Fill in the values it asks for: `APP_URL` (e.g.
-   `https://expansion-portal.onrender.com`, or your own domain),
-   `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_INITIAL_PASSWORD`, the `S3_*` values
-   from step 1 and the `SMTP_*` values from step 2. Leave any you don't use
-   empty.
-3. **Apply.** The first deploy takes a few minutes. The Starter instance plus
-   the disk costs roughly US$7–10/month.
-4. Optional: Settings → Custom Domains → add e.g.
-   `expansion.yourcompany.com` and create the CNAME it shows; then update
-   `APP_URL` to match.
+Redeploy. Sign in with `ADMIN_EMAIL`, change the password under your
+profile, add your team under **People & roles** (tick *Can approve* for
+sales approvers), and check **Data & backups** shows "Managed PostgreSQL"
+and your bucket with green dots.
 
-### 3b. Or any server with Docker
+### Other hosts
 
-```bash
-cp .env.example .env    # fill it in; DATA_DIR is set to /data in the image
-docker compose up -d --build
-```
-
-Put it behind HTTPS (Caddy: `expansion.yourcompany.com { reverse_proxy localhost:3000 }`).
-The `portal-data` volume holds the database, uploads and local backups.
-
-### 4. First sign-in
-
-Open the site, sign in with `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD`,
-change the password under **Account**, then:
-
-- **Access & roles:** add each person with their role. For sales, tick *Can
-  approve* for the members who approve.
-- **Backups & settings:** confirm "Off-site bucket" shows your bucket, click
-  **Back up now**, and check the backup is marked ✓ off-site.
-
-`/api/health` returns `{"ok":true}` when the app and database are up; point
-an uptime monitor (e.g. UptimeRobot) at it.
+`render.yaml` (Render blueprint) and `Dockerfile` / `docker-compose.yml`
+run the same app on a regular server; set the same variables. On a server
+the backup scheduler runs in-process. `/api/health` reports status for
+uptime monitors.
 
 ## Code layout
 
 - `lib/expansion/` — pure rules shared by server and UI: roles, the
-  pipeline and visibility tables (`workflow.ts`), form validation, maps,
-  formatting.
-- `lib/server/` — server-only data layer: schema and migrations (`db.ts`),
-  property access and views (`properties.ts`), every pipeline step
-  (`pipeline.ts`), uploads (`files.ts`), local + S3 storage
-  (`blobStore.ts`), backups, users, sessions, notifications, email, audit,
-  settings.
-- `app/(portal)/` — role portals and the shared property page
-  (`/properties/[id]`), which shows each role its sections and actions;
-  `app/actions/` — server actions; `app/api/` — file upload/download, CSV
-  export; `instrumentation.ts` starts the backup scheduler.
-
-```bash
-npm test         # pipeline, visibility, archiving, backups, access control, calculator
-npm run lint
-npm run build
-```
+  pipeline and visibility tables (`workflow.ts`), validation, formatting.
+- `lib/server/` — server-only: database & migrations (`db.ts`), property
+  access and views (`properties.ts`), every pipeline step (`pipeline.ts`),
+  uploads (`files.ts`), bucket/disk storage (`storage.ts`), backups, users,
+  sessions, notifications, email, audit, demo data.
+- `app/(portal)/` — role portals and the shared property page;
+  `app/api/uploads/*` — resumable uploads; `app/api/files/[id]` — downloads;
+  `app/api/cron/backup` — daily backup.
+- `components/portal/` — the fairdeal.market UI (brand, app shell, forms).
 
 ## Electrical calculator (`/calculator`)
 

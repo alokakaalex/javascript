@@ -41,16 +41,16 @@ export default function ResultsPanel({ lines, prices, onPriceChange }: Props) {
         return (
           <div key={category}>
             <div className="mb-2 flex items-baseline justify-between">
-              <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+              <h3 className="text-base font-semibold text-slate-900">
                 {category}
               </h3>
-              <span className="text-sm text-zinc-500">
+              <span className="text-sm text-slate-500">
                 {currency.format(categoryTotal)}
               </span>
             </div>
-            <div className="overflow-x-auto rounded border border-zinc-200 dark:border-zinc-800">
+            <div className="overflow-x-auto rounded border border-slate-200">
               <table className="w-full text-left text-sm">
-                <thead className="bg-zinc-50 text-xs uppercase text-zinc-500 dark:bg-zinc-900">
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                   <tr>
                     <th className="px-3 py-2">Asset</th>
                     <th className="px-3 py-2">Qty</th>
@@ -66,22 +66,22 @@ export default function ResultsPanel({ lines, prices, onPriceChange }: Props) {
                     return (
                       <tr
                         key={line.id}
-                        className="border-t border-zinc-100 dark:border-zinc-800"
+                        className="border-t border-slate-100"
                       >
-                        <td className="px-3 py-2 font-medium text-zinc-800 dark:text-zinc-200">
+                        <td className="px-3 py-2 font-medium text-slate-800">
                           {line.name}
                           {line.note ? (
-                            <div className="mt-0.5 max-w-xs text-xs font-normal text-amber-700 dark:text-amber-400">
+                            <div className="mt-0.5 max-w-xs text-xs font-normal text-amber-700">
                               {line.note}
                             </div>
                           ) : null}
                         </td>
                         <td className="px-3 py-2 tabular-nums">{line.quantity}</td>
-                        <td className="px-3 py-2 text-zinc-500">{line.unit}</td>
+                        <td className="px-3 py-2 text-slate-500">{line.unit}</td>
                         <td className="px-3 py-2">
                           <input
                             type="number"
-                            className="w-24 rounded border border-zinc-300 bg-white px-1.5 py-1 tabular-nums dark:border-zinc-700 dark:bg-zinc-900"
+                            className="w-24 rounded border border-slate-300 bg-white px-1.5 py-1 tabular-nums"
                             value={unitCost}
                             min={0}
                             onChange={(e) =>
@@ -92,7 +92,7 @@ export default function ResultsPanel({ lines, prices, onPriceChange }: Props) {
                         <td className="px-3 py-2 tabular-nums">
                           {currency.format(line.quantity * unitCost)}
                         </td>
-                        <td className="px-3 py-2 text-xs text-zinc-500">
+                        <td className="px-3 py-2 text-xs text-slate-500">
                           {line.formula}
                         </td>
                       </tr>
@@ -105,13 +105,13 @@ export default function ResultsPanel({ lines, prices, onPriceChange }: Props) {
         );
       })}
 
-      <div className="flex items-center justify-between rounded border border-zinc-900 bg-zinc-900 px-4 py-3 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900">
+      <div className="flex items-center justify-between rounded border border-slate-900 bg-slate-900 px-4 py-3 text-white">
         <span className="text-sm font-medium">Estimated total project cost</span>
         <span className="text-lg font-semibold tabular-nums">
           {currency.format(grandTotal)}
         </span>
       </div>
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-slate-500">
         Counts and prices are calibrated from three real warehouse fit-outs
         (Ashok Vihar &amp; Naraina using an LED-bulb lighting scheme,
         Jahangirpuri using LED tube lights). Items marked with an amber note
